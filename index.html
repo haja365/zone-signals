@@ -532,15 +532,6 @@ function biasAt(ind, i) {
   if (e20 < e50 && r < 55) return "bearish";
   return "neutral";
 }
-// Same $0.01-per-pip convention used by Exness and virtually all CFD
-// brokers for both XAU/USD and XAG/USD.
-const PIP_SIZE = 0.10;
-function getPipTargets() {
-  const min = parseFloat(localStorage.getItem("zs_min_pips")) || 100;
-  const max = parseFloat(localStorage.getItem("zs_max_pips")) || 200;
-  return { minPips: min, maxPips: max };
-}
-
 function zoneAt(candles, ind, i, direction) {
   const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 2.5;
   const levels = [];
@@ -551,11 +542,8 @@ function zoneAt(candles, ind, i, direction) {
   return { inZone: !!nearLevel, level: nearLevel, atrNow };
 }
 
-// SL still comes off ATR/structure, same as before. TP1/TP2/TP3 now target a
-// configurable pip range (default 100-200 pips = $1-$2 on gold/silver at
-// the standard $0.01-per-pip convention) instead of pure risk-multiples --
-// R:R is reported based on wherever that lands relative to the stop, rather
-// than the stop being sized to hit a fixed R:R.
+// Market-standard ATR-based risk-multiples: SL off ATR/structure, TP1/TP2/TP3
+// at 1.5R/3R/4.5R off that same stop distance. No pip-count math involved.
 function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoIndex) {
   const atrNow = atrRaw || entry * 0.003;
   const relevantSwings = (direction === "buy" ? swingLows : swingHighs).filter(s => uptoIndex == null || s.index <= uptoIndex - 2);
@@ -565,20 +553,11 @@ function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoInde
   else { const s = nearestStructure != null ? nearestStructure + atrNow * 0.3 : entry + atrNow * 1.5; stopLoss = Math.max(s, entry + atrNow * 1.2); }
   const risk = Math.abs(entry - stopLoss);
 
-  const { minPips, maxPips } = getPipTargets();
-  const minDist = minPips * PIP_SIZE, midDist = ((minPips + maxPips) / 2) * PIP_SIZE, maxDist = maxPips * PIP_SIZE;
-  const tp1 = direction === "buy" ? entry + minDist : entry - minDist;
-  const tp2 = direction === "buy" ? entry + midDist : entry - midDist;
-  const tp3 = direction === "buy" ? entry + maxDist : entry - maxDist;
+  const tp1 = direction === "buy" ? entry + risk * 1.5 : entry - risk * 1.5;
+  const tp2 = direction === "buy" ? entry + risk * 3 : entry - risk * 3;
+  const tp3 = direction === "buy" ? entry + risk * 4.5 : entry - risk * 4.5;
 
-  // Rough reachability read: how many 15m ATR-units the near target
-  // represents. Cumulative random-walk displacement scales roughly with
-  // sqrt(bars), so bars-needed ~ (distance/atr)^2 -- a heuristic, not a promise.
-  const atrUnits = atrNow > 0 ? minDist / atrNow : null;
-  const estBars15m = atrUnits != null ? Math.round(atrUnits * atrUnits) : null;
-  const feasibility = estBars15m == null ? null : estBars15m <= 8 ? "typical" : estBars15m <= 30 ? "stretch" : "ambitious";
-
-  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: risk > 0 ? minDist / risk : null, rrTp2: risk > 0 ? midDist / risk : null, rrTp3: risk > 0 ? maxDist / risk : null, minPips, maxPips, feasibility, estBars15m };
+  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: 1.5, rrTp2: 3, rrTp3: 4.5 };
 }
 function biasOnly(candles) {
   if (!candles || candles.length < 10) return "neutral";
@@ -938,20 +917,11 @@ function renderShell() {
           <div class="k">Risk per trade (%)</div>
           <input id="riskPercent" type="number" inputmode="decimal" step="0.1" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
         </div>
-        <div class="stat">
-          <div class="k">Min target (pips)</div>
-          <input id="minPips" type="number" inputmode="decimal" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
-        </div>
-        <div class="stat">
-          <div class="k">Max target (pips)</div>
-          <input id="maxPips" type="number" inputmode="decimal" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
-        </div>
       </div>
       <div class="reason" style="margin-top:8px;">
-        1 pip = $0.10 (your set convention) — so 100-200 pips = a
-        $10.00-$20.00 move. TP1 targets the min, TP3 the max, TP2 the
-        midpoint. Changing these updates every new signal going forward,
-        not ones already fired.
+        TP1/TP2/TP3 are ATR-based risk-multiples (1.5R/3R/4.5R off the
+        stop distance) — standard market convention, not a manually set
+        pip target.
       </div>
       <div id="sizingResult" class="reason" style="margin-top:10px;">Waiting for a signal or preview to size against…</div>
     </div>
@@ -1007,12 +977,6 @@ function renderShell() {
   acctInput.addEventListener("input", () => { localStorage.setItem("zs_acct_balance", acctInput.value); renderPositionSizing(); });
   riskInput.addEventListener("input", () => { localStorage.setItem("zs_risk_percent", riskInput.value); renderPositionSizing(); });
 
-  const minPipsInput = document.getElementById("minPips"), maxPipsInput = document.getElementById("maxPips");
-  minPipsInput.value = localStorage.getItem("zs_min_pips") || "100";
-  maxPipsInput.value = localStorage.getItem("zs_max_pips") || "200";
-  minPipsInput.addEventListener("input", () => { localStorage.setItem("zs_min_pips", minPipsInput.value); });
-  maxPipsInput.addEventListener("input", () => { localStorage.setItem("zs_max_pips", maxPipsInput.value); });
-
   document.getElementById("clearJournalBtn").addEventListener("click", () => {
     if (confirm("Clear all logged trades? This can't be undone.")) { saveJournal([]); renderJournal(); }
   });
@@ -1065,8 +1029,25 @@ async function liveTick() {
       last.high = Math.max(last.high, price);
       last.low = Math.min(last.low, price);
     }
+    st.data.lastPrice = price;
+
+    // While a setup is still just "watching" (not yet a confirmed signal,
+    // and no trade already open), keep its preview entry/SL/TP tracking the
+    // live price every tick using the last scan's ATR/structure -- once it
+    // actually confirms into a real signal (or a trade is open), those
+    // numbers lock in and stop moving, same as a real trade would.
+    const openTrade = getOpenTrade(sym.key);
+    const sig = st.data.signal;
+    if (!openTrade && sig?.status === "watching" && sig.direction && sig.preview) {
+      const m15 = st.data.tfReads?.["15m"];
+      if (m15) {
+        sig.preview = computeLevels(sig.direction, price, m15.atrNow, m15.swingLows, m15.swingHighs);
+      }
+    }
+
     const priceEl = document.getElementById(`priceValue-${sym.key}`);
     if (priceEl) priceEl.textContent = fmt(price, sym.decimals);
+    renderCard(sym, st.data);
     if (st.activeTf === "15m") paintChart(sym.key);
   }
 }
@@ -1212,10 +1193,6 @@ function renderCard(sym, payload) {
 
   let html = "";
   const rr = n => n == null ? "—" : n.toFixed(1);
-  const feasibilityNote = f => f === "typical" ? `<span style="color:var(--buy);">reachable within a normal candle or two</span>`
-    : f === "stretch" ? `<span style="color:var(--gold);">a bit of a stretch given current volatility</span>`
-    : f === "ambitious" ? `<span style="color:var(--sell);">ambitious right now — current volatility is low relative to this target</span>`
-    : "";
   if (openTrade) {
     html = `<div class="reason">In an open ${openTrade.direction} trade since ${fmtDateUAE(new Date(openTrade.loggedAt))} — waiting for price to hit stop loss or TP1 before a new signal can fire for ${sym.label.split(" ")[0]}.</div>
     <div class="grid">
@@ -1230,23 +1207,23 @@ function renderCard(sym, payload) {
     html = `<div class="grid">
       <div class="stat"><div class="k">Entry</div><div class="v">${fmt(signal.entry, sym.decimals)}</div></div>
       <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(signal.stopLoss, sym.decimals)}</div></div>
-      <div class="stat buy"><div class="k">TP1 · ${signal.minPips}p (1:${rr(signal.riskRewardTp1)})</div><div class="v">${fmt(signal.tp1, sym.decimals)}</div></div>
-      <div class="stat buy"><div class="k">TP2 · mid (1:${rr(signal.riskRewardTp2)})</div><div class="v">${fmt(signal.tp2, sym.decimals)}</div></div>
-      <div class="stat buy"><div class="k">TP3 · ${signal.maxPips}p (1:${rr(signal.riskRewardTp3)})</div><div class="v">${fmt(signal.tp3, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP1 (1:${rr(signal.riskRewardTp1)})</div><div class="v">${fmt(signal.tp1, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP2 (1:${rr(signal.riskRewardTp2)})</div><div class="v">${fmt(signal.tp2, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP3 (1:${rr(signal.riskRewardTp3)})</div><div class="v">${fmt(signal.tp3, sym.decimals)}</div></div>
       <div class="stat"><div class="k">15m trigger</div><div class="v" style="font-size:11px;">${signal.pattern.replace(/_/g," ")}</div></div>
       ${smcText ? `<div class="stat"><div class="k">Smart Money context</div><div class="v" style="font-size:11px;">${smcText}</div></div>` : ""}
-    </div>
-    ${feasibilityNote(signal.feasibility) ? `<div class="reason">TP1 looks ${feasibilityNote(signal.feasibility)} based on recent 15m volatility.</div>` : ""}`;
+    </div>`;
     html += renderConfidenceHTML(confidence);
   } else if (signal?.preview) {
     const p = signal.preview, dirLabel = signal.direction === "buy" ? "Potential buy setup" : "Potential sell setup";
     html = `
       <div class="reason">${dirLabel} forming — not confirmed yet: ${signal.reason}</div>
       <div class="grid">
-        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(tfReads["15m"]?.lastClose ?? lastPrice, sym.decimals)}</div></div>
+        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
         <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
-        <div class="stat buy"><div class="k">TP1 · ${p.minPips}p</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
-        <div class="stat buy"><div class="k">TP3 · ${p.maxPips}p</div><div class="v">${fmt(p.tp3, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP1</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP2</div><div class="v">${fmt(p.tp2, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP3</div><div class="v">${fmt(p.tp3, sym.decimals)}</div></div>
       </div>`;
     html += renderConfidenceHTML(confidence);
   } else {
