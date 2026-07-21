@@ -1224,7 +1224,7 @@ function renderCard(sym, payload) {
     html = `
       <div class="reason">${dirLabel} forming — not confirmed yet: ${signal.reason}</div>
       <div class="grid">
-        <div class="stat"><div class="k">Entry ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
+        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
         <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP1</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP2</div><div class="v">${fmt(p.tp2, sym.decimals)}</div></div>
