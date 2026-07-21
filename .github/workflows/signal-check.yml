@@ -2,7 +2,7 @@ name: Gold & Silver signal check
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # every 15 minutes (GitHub may delay this under load)
+    - cron: "*/5 * * * *"   # every 5 minutes -- GitHub's documented minimum for scheduled workflows; can still run late under load
   workflow_dispatch: {}       # lets you trigger it manually from the Actions tab
 
 permissions:
