@@ -35,7 +35,10 @@
   .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--buy);
     vertical-align:middle;margin-bottom:3px;animation:pulse 2s ease-in-out infinite;}
   .live-dot.stale{background:var(--ink-dim);animation:none;}
+  .live-dot.flash{animation:flash 0.6s ease-out;}
   @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+  @keyframes flash{0%{transform:scale(2.2);box-shadow:0 0 8px var(--buy);}100%{transform:scale(1);box-shadow:none;}}
+  .live-heartbeat{font-family:var(--mono);font-size:10px;color:var(--ink-dim);margin-top:3px;}
   .status-badge{font-family:var(--mono);font-size:10.5px;padding:5px 9px;border-radius:7px;
     text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;}
   .status-badge.signal-buy{background:rgba(63,178,143,0.18);color:var(--buy);border:1px solid rgba(63,178,143,0.4);}
@@ -845,8 +848,8 @@ function fmtEventTime(ts) {
 
 /* ---------------- UI state ---------------- */
 
-const symbolState = {}; // key -> { canvas, activeTf, data }
-SYMBOLS.forEach(s => { symbolState[s.key] = { canvas: null, activeTf: "15m", data: null }; });
+const symbolState = {}; // key -> { canvas, activeTf, data, lastTickAt }
+SYMBOLS.forEach(s => { symbolState[s.key] = { canvas: null, activeTf: "15m", data: null, lastTickAt: null }; });
 let alertsEnabled = false;
 const notifiedSignatures = new Set();
 let trendTableSymbol = "GOLD", sizingSymbol = "GOLD", backtestSymbol = "GOLD";
@@ -866,7 +869,7 @@ function renderShell() {
     card.className = "card"; card.id = `card-${sym.key}`;
     card.innerHTML = `
       <div class="card-head">
-        <div><div class="asset-name">${sym.label}</div><div class="asset-price"><span id="priceValue-${sym.key}">—</span> <span id="liveDot-${sym.key}" class="live-dot" title="Live 15m candle updates"></span></div></div>
+        <div><div class="asset-name">${sym.label}</div><div class="asset-price"><span id="priceValue-${sym.key}">—</span> <span id="liveDot-${sym.key}" class="live-dot" title="Live 15m candle updates"></span></div><div class="live-heartbeat" id="heartbeat-${sym.key}">waiting for first tick…</div></div>
         <div class="status-badge watching" id="status-${sym.key}">loading</div>
       </div>
       <div class="tf-row" id="tfrow-${sym.key}"></div>
@@ -1021,6 +1024,8 @@ async function liveTick() {
     const price = await fetchLivePriceFor(sym);
     if (price == null) { dot?.classList.add("stale"); continue; }
     dot?.classList.remove("stale");
+    st.lastTickAt = Date.now();
+    dot?.classList.remove("flash"); void dot?.offsetWidth; dot?.classList.add("flash"); // restart the flash animation every tick, proof a fresh value just arrived
     const candles15 = st.data.candles["15m"];
     const last = candles15[candles15.length - 1];
     const FIFTEEN_MIN = 15 * 60 * 1000;
@@ -1219,7 +1224,7 @@ function renderCard(sym, payload) {
     html = `
       <div class="reason">${dirLabel} forming — not confirmed yet: ${signal.reason}</div>
       <div class="grid">
-        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
+        <div class="stat"><div class="k">Entry ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
         <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP1</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP2</div><div class="v">${fmt(p.tp2, sym.decimals)}</div></div>
@@ -1601,7 +1606,20 @@ setInterval(updateSessionBadge, 30 * 1000);
 setInterval(renderDataHealth, 30 * 1000);
 scanAll().then(setUpdatedLabel);
 setInterval(async () => { await scanAll(); setUpdatedLabel(); }, 2 * 60 * 1000);
+function updateHeartbeats() {
+  const now = Date.now();
+  for (const sym of SYMBOLS) {
+    const el = document.getElementById(`heartbeat-${sym.key}`);
+    if (!el) continue;
+    const st = symbolState[sym.key];
+    if (!st.lastTickAt) { el.textContent = "waiting for first tick…"; continue; }
+    const secs = Math.floor((now - st.lastTickAt) / 1000);
+    el.textContent = secs <= 1 ? "live · updated just now" : `live · updated ${secs}s ago`;
+  }
+}
+
 setInterval(liveTick, 15 * 1000);
+setInterval(updateHeartbeats, 1000);
 </script>
 </body>
 </html>
