@@ -6,8 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SYMBOLS = [
-  { key: "GOLD",   label: "Gold (XAU/USD)",   decimals: 2, yahoo: "GC=F", twelveData: "XAU/USD", finnhub: "OANDA:XAU_USD" },
-  { key: "SILVER", label: "Silver (XAG/USD)", decimals: 3, yahoo: "SI=F", twelveData: "XAG/USD", finnhub: "OANDA:XAG_USD" },
+  { key: "GOLD",   label: "Gold (XAU/USD)",   decimals: 2, twelveData: "XAU/USD", finnhub: "OANDA:XAU_USD" },
+  { key: "SILVER", label: "Silver (XAG/USD)", decimals: 3, twelveData: "XAG/USD", finnhub: "OANDA:XAG_USD" },
 ];
 
 const TWELVEDATA_API_KEY = process.env.TWELVEDATA_API_KEY || "";
@@ -18,6 +18,10 @@ const STATE_PATH = path.join(process.cwd(), "data", "last-notified.json");
 
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
   console.error("TELEGRAM_BOT_TOKEN and/or TELEGRAM_CHAT_ID secrets are not set -- see README-TELEGRAM.md.");
+  process.exit(1);
+}
+if (!TWELVEDATA_API_KEY && !FINNHUB_API_KEY) {
+  console.error("Yahoo fallback has been removed -- TWELVEDATA_API_KEY or FINNHUB_API_KEY secret is now required. See README-TELEGRAM.md.");
   process.exit(1);
 }
 
@@ -43,21 +47,6 @@ async function fetchFinnhub(finnhubSymbol, resolution, count, apiKey) {
   return json.t.map((t, i) => ({ time: t * 1000, open: json.o[i], high: json.h[i], low: json.l[i], close: json.c[i], volume: json.v?.[i] || 0 }));
 }
 
-// No CORS proxy needed server-side -- Yahoo just needs a browser-like
-// User-Agent to avoid being flagged as a bare bot request.
-async function fetchYahoo(yahooSymbol, interval, range) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
-  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" } });
-  if (!res.ok) throw new Error(`Yahoo ${res.status}`);
-  const json = await res.json();
-  const result = json?.chart?.result?.[0];
-  if (!result) throw new Error("No chart data");
-  const ts = result.timestamp || [];
-  const q = result.indicators.quote[0];
-  return ts.map((t, i) => ({ time: t * 1000, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] }))
-    .filter(c => c.open != null && c.high != null && c.low != null && c.close != null);
-}
-
 function resampleToInterval(source, minutes) {
   const bucketMs = minutes * 60 * 1000;
   const buckets = new Map();
@@ -71,26 +60,20 @@ function resampleToInterval(source, minutes) {
 function resampleTo4h(hourly) { return resampleToInterval(hourly, 240); }
 function resampleToDaily(fourHourly) { return resampleToInterval(fourHourly, 1440); }
 
+// Yahoo removed entirely (per request -- it was the source of the lag).
 async function getCandlesFor(sym, tf) {
   if (TWELVEDATA_API_KEY) {
     const intervalMap = { "15m": "15min", "1h": "1h", "4h": "4h" };
     try { return await fetchTwelveData(sym.twelveData, intervalMap[tf], TWELVEDATA_API_KEY, tf === "4h" ? 800 : 500); }
-    catch (err) { console.warn(`Twelve Data failed for ${sym.key} ${tf}, falling back:`, err.message); }
+    catch (err) { console.warn(`Twelve Data failed for ${sym.key} ${tf}, falling back to Finnhub:`, err.message); }
   }
   if (FINNHUB_API_KEY) {
-    try {
-      const resolutionMap = { "15m": "15", "1h": "60", "4h": "60" };
-      const count = tf === "4h" ? 2500 : 500;
-      const raw = await fetchFinnhub(sym.finnhub, resolutionMap[tf], count, FINNHUB_API_KEY);
-      return tf === "4h" ? resampleTo4h(raw) : raw;
-    } catch (err) {
-      console.warn(`Finnhub failed for ${sym.key} ${tf}, falling back to Yahoo:`, err.message);
-    }
+    const resolutionMap = { "15m": "15", "1h": "60", "4h": "60" };
+    const count = tf === "4h" ? 2500 : 500;
+    const raw = await fetchFinnhub(sym.finnhub, resolutionMap[tf], count, FINNHUB_API_KEY);
+    return tf === "4h" ? resampleTo4h(raw) : raw;
   }
-  if (tf === "15m") return fetchYahoo(sym.yahoo, "15m", "5d");
-  if (tf === "1h") return fetchYahoo(sym.yahoo, "60m", "1mo");
-  const hourly = await fetchYahoo(sym.yahoo, "60m", "6mo");
-  return resampleTo4h(hourly);
+  throw new Error("No API key available for this symbol/timeframe");
 }
 
 function ema(values, period) {
