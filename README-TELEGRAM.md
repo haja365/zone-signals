@@ -46,20 +46,13 @@ repository secret**. Add:
 - `TELEGRAM_BOT_TOKEN` — from step 1
 - `TELEGRAM_CHAT_ID` — from step 2
 
-If you're using Twelve Data and/or Finnhub keys for more reliable data
-(recommended, same as the web app), also add:
+**Required** — at least one of these two (Yahoo's fallback has been removed
+entirely, so the script won't run at all without one):
 
-- `TWELVEDATA_API_KEY`
-- `FINNHUB_API_KEY`
+- `TWELVEDATA_API_KEY` — free, no card, from twelvedata.com
+- `FINNHUB_API_KEY` — free, no card, from finnhub.io/register
 
-Optional — override the default 100/200 pip TP targets (same setting as the
-app's Size tab, kept in sync manually since GitHub Actions has no
-localStorage equivalent):
-
-- `MIN_PIPS` (default 100)
-- `MAX_PIPS` (default 200)
-
-(Without either, it falls back to Yahoo automatically, same as the app.)
+If both are set, Twelve Data is tried first and Finnhub is the fallback.
 
 ## 5. Turn it on
 
@@ -107,10 +100,18 @@ Confidence: 82%
   Actions tab and click Enable again.
 - **Timing isn't exact** — GitHub's scheduler can run a few minutes late
   under load.
-- **Pip size is $0.10 here** (matches the app's Size-tab convention) — 100
-  pips = $10, 200 pips = $20 by default. Daily/4H are no longer required
-  for a signal (1H + 15M only), so this script only fetches those two
-  timeframes to keep API usage down, given the faster schedule.
+- **TP/SL are market-standard ATR-based risk-multiples** (1.5R/3R/4.5R off
+  the stop distance) — no manual pip-count/pip-size settings involved.
+  Daily/4H are no longer required for a signal (1H + 15M only), so this
+  script only fetches those two timeframes to keep API usage down, given
+  the faster schedule.
+- **Every confidence-checklist factor must pass, not just the base
+  trigger.** RSI has to be in a healthy (not overextended) range, price
+  has to be at a zone, Smart Money context has to align, the 1H trend has
+  to be clean (not choppy), and no major news can be imminent — all five,
+  plus the base 1H+15M trigger, before a "signal" is sent. This is
+  stricter than the base trigger alone, so expect fewer, more selective
+  notifications.
 - This script mirrors the app's exact signal engine (1H+15M confluence,
   Smart Money Concepts) — if you change the strategy logic in the app
   later, this script needs the matching update to stay in
