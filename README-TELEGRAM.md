@@ -52,6 +52,13 @@ If you're using Twelve Data and/or Finnhub keys for more reliable data
 - `TWELVEDATA_API_KEY`
 - `FINNHUB_API_KEY`
 
+Optional — override the default 100/200 pip TP targets (same setting as the
+app's Size tab, kept in sync manually since GitHub Actions has no
+localStorage equivalent):
+
+- `MIN_PIPS` (default 100)
+- `MAX_PIPS` (default 200)
+
 (Without either, it falls back to Yahoo automatically, same as the app.)
 
 ## 5. Turn it on
@@ -85,18 +92,26 @@ Confidence: 82%
 
 ## Things worth knowing
 
-- **One notification per confirmed candle**, not per run — it remembers
-  the last signal it notified about per symbol (in
-  `data/last-notified.json`, committed back to the repo each run
-  automatically) so you won't get spammed every 15 minutes while the same
-  setup is still open.
+- **Runs every 5 minutes** — GitHub's documented minimum for scheduled
+  workflows (2 minutes was requested but isn't actually achievable there;
+  the web app itself does refresh every 2 minutes, since a browser timer
+  has no such restriction).
+- **Only one open trade per symbol at a time.** Once a signal fires for
+  Gold or Silver, this script won't check for (or notify about) a new one
+  for that same symbol until the open trade hits its stop loss or TP1 —
+  you'll get a separate "✅ trade closed: WIN" or "❌ trade closed: LOSS"
+  message the moment that happens, and the next signal can fire from
+  there.
 - **GitHub disables scheduled workflows after 60 days of repo
   inactivity.** If you go quiet on the repo for two months, pop into the
   Actions tab and click Enable again.
 - **Timing isn't exact** — GitHub's scheduler can run a few minutes late
-  under load. Fine for Daily/4H/1H/15M signals, not built for anything
-  faster.
-- This script mirrors the app's exact signal engine (4-tier confluence,
-  Smart Money Concepts, confidence score) — if you change the strategy
-  logic in the app later, this script needs the matching update to stay in
+  under load.
+- **Pip size is $0.10 here** (matches the app's Size-tab convention) — 100
+  pips = $10, 200 pips = $20 by default. Daily/4H are no longer required
+  for a signal (1H + 15M only), so this script only fetches those two
+  timeframes to keep API usage down, given the faster schedule.
+- This script mirrors the app's exact signal engine (1H+15M confluence,
+  Smart Money Concepts) — if you change the strategy logic in the app
+  later, this script needs the matching update to stay in
   sync, or the Telegram alerts and the dashboard could quietly drift apart.
