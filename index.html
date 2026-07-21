@@ -134,12 +134,12 @@
 
 <div id="apiKeyBox" class="setup-box" style="display:none;">
   <div id="keySourceNote" style="font-family:var(--mono); font-size:10.5px; color:var(--gold); margin-bottom:8px;"></div>
-  <b>Recommended: reliable price data for Gold &amp; Silver</b><br/>
-  Without a key, metals fall back to a free public relay that's proven
-  unreliable in practice. A free
+  <b>Required: Gold &amp; Silver need one of these to fetch any data</b><br/>
+  Yahoo's free relay has been removed (it was the source of real lag) — there's
+  no zero-signup fallback for metals anymore. A free
   <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a>
-  account (no card, 800 requests/day) fetches directly with no proxy
-  involved — sign up, copy your API key, paste it below.
+  account (no card, 800 requests/day) fetches directly, no proxy involved —
+  sign up, copy your API key, paste it below.
   <div style="display:flex; gap:6px; align-items:center;">
     <input id="apiKeyInput" type="password" placeholder="Twelve Data API key" autocapitalize="off" autocorrect="off" style="flex:1; margin:8px 0;" />
     <button type="button" id="toggleApiKey" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border); padding:9px 12px; border-radius:8px; font-size:11px; white-space:nowrap;">Show</button>
@@ -149,8 +149,9 @@
     <button id="clearApiKey" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
   </div>
   <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--panel-border);">
-    <b>Optional 2nd fallback for metals: Finnhub</b><br/>
-    Used only if Twelve Data is missing or fails. Free
+    <b>Alternative/2nd fallback for metals: Finnhub</b><br/>
+    Used if Twelve Data is missing or fails — one of these two is now
+    required, since there's no Yahoo fallback left. Free
     <a class="ghost-link" href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a>
     account (no card, 60 calls/min) — direct API, not a proxy.
     <div style="display:flex; gap:6px; align-items:center;">
@@ -162,17 +163,36 @@
       <button id="clearFinnhub" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
     </div>
   </div>
+  <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--panel-border);">
+    <b>Optional: closer-to-spot live price via GoldAPI.io</b><br/>
+    Twelve Data/Finnhub already give genuine spot-style quotes, but if
+    you'd like an extra live-price source specifically, a free
+    <a class="ghost-link" href="https://www.goldapi.io/" target="_blank" rel="noopener">GoldAPI.io</a>
+    account (no card) works too. Note: this only feeds the live-ticking
+    price at the top of the card — it doesn't provide the historical
+    candles the chart and indicators need (daily history only), so
+    Twelve Data/Finnhub still handle that part.
+    <div style="display:flex; gap:6px; align-items:center;">
+      <input id="goldApiInput" type="password" placeholder="GoldAPI.io access token" autocapitalize="off" autocorrect="off" style="flex:1; margin:8px 0;" />
+      <button type="button" id="toggleGoldApi" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border); padding:9px 12px; border-radius:8px; font-size:11px; white-space:nowrap;">Show</button>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button id="saveGoldApi">Save</button>
+      <button id="clearGoldApi" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
+    </div>
+  </div>
 </div>
 
 <main id="cards"></main>
 
 <div class="footer-note">
-  Technical signals computed live in your browser: Twelve Data or Finnhub if
-  you add a key, otherwise a public Yahoo Finance relay. Plus a shared US
-  Dollar Index (DXY) read and the ForexFactory economic calendar. No
-  account required, no broker connection, no server — everything runs on
-  this page. Not financial advice; verify any setup yourself and always
-  trade with a stop loss.<br/><br/>
+  Technical signals computed live in your browser via Twelve Data or
+  Finnhub — Gold/Silver now require one of those two free keys, since the
+  old Yahoo fallback has been removed entirely (it was the source of real
+  lag). Plus a shared US Dollar Index (DXY) read (via Twelve Data, if
+  available) and the ForexFactory economic calendar. No broker connection,
+  no server — everything runs on this page. Not financial advice; verify
+  any setup yourself and always trade with a stop loss.<br/><br/>
   All times shown are in <b>UAE time</b> (Asia/Dubai), regardless of your
   device's own timezone setting.<br/><br/>
   Each chart plots Entry/SL/TP1/TP2/TP3 directly on the 15m candles (dashed
@@ -180,16 +200,19 @@
   be sitting in a zone, and the 15m trigger accepts either a candle pattern
   or a Smart Money structure break — Daily and 4H are still fetched and
   shown as context (Trend tab, confidence score) but no longer required for
-  a signal to fire. TP1/TP2/TP3 target a configurable pip range (Size tab —
-  default 100/200 pips at $0.10 per pip, i.e. $10-$20) rather than a pure
-  risk-multiple, with a rough reachability read based on recent 15m
-  volatility. Each read also checks for Smart Money Concepts (Fair Value
-  Gaps, Order Blocks, Break of Structure / Change of Character) and rolls
-  everything into a weighted 0-100 <b>confidence score</b> with a visible
-  breakdown of what's contributing to it, including an automatic penalty
-  when a major news release is imminent. The Trend / Size / Journal / News /
-  Backtest tools are grouped into one panel below — switch tabs instead of
-  scrolling through five separate cards.<br/><br/>
+  a signal to fire. TP1/TP2/TP3 are market-standard ATR-based risk-multiples
+  (1.5R/3R/4.5R off the stop distance) — no manual pip settings involved.
+  Each read also checks for Smart Money Concepts (Fair Value Gaps, Order
+  Blocks, Break of Structure / Change of Character) and rolls everything
+  into a weighted 0-100 <b>confidence score</b> with a visible breakdown of
+  what's contributing to it, including an automatic penalty when a major
+  news release is imminent — every checklist factor has to pass, not just
+  the base trigger, before it counts as a real signal. The Trend / Size /
+  Journal / News / Backtest tools are grouped into one panel below — switch
+  tabs instead of scrolling through five separate cards.<br/><br/>
+  While a setup is still just "watching," its preview Entry/SL/TP track the
+  live price every ~15 seconds. The moment it confirms into a real signal
+  (or a trade is already open), those numbers lock in place.<br/><br/>
   <b>Only one open trade per asset at a time.</b> Once a signal fires for
   Gold or Silver, no new signal (or notification) fires for that asset
   again until the open one hits its stop loss or TP1 — the card shows
@@ -202,7 +225,8 @@
   Auto-refreshes every 2 minutes. Running both metals with a Twelve Data
   key at this pace uses noticeably more of the free daily credit budget
   than before — if you hit the limit, it automatically falls back to
-  Finnhub, then Yahoo, for the rest of the day.<br/><br/>
+  Finnhub for the rest of the day (no further fallback beyond
+  that).<br/><br/>
   <b>If every card shows "data error" at once:</b> you're viewing this inside
   a sandboxed preview (e.g. Claude's in-chat artifact panel) that blocks
   outbound network requests. Open the file directly in Safari/Chrome instead.
@@ -210,8 +234,8 @@
 
 <script>
 const SYMBOLS = [
-  { key: "GOLD",   label: "Gold · XAU/USD",   kind: "metal",  decimals: 2, yahoo: "GC=F", twelveData: "XAU/USD", finnhub: "OANDA:XAU_USD" },
-  { key: "SILVER", label: "Silver · XAG/USD", kind: "metal",  decimals: 3, yahoo: "SI=F", twelveData: "XAG/USD", finnhub: "OANDA:XAG_USD" },
+  { key: "GOLD",   label: "Gold · XAU/USD",   kind: "metal",  decimals: 2, twelveData: "XAU/USD", finnhub: "OANDA:XAU_USD", goldapi: "XAU" },
+  { key: "SILVER", label: "Silver · XAG/USD", kind: "metal",  decimals: 3, twelveData: "XAG/USD", finnhub: "OANDA:XAG_USD", goldapi: "XAG" },
 ];
 const symbolByKey = k => SYMBOLS.find(s => s.key === k);
 
@@ -241,6 +265,7 @@ function currentSession() {
 
 function getTwelveDataKey() { return localStorage.getItem("zs_td_key") || ""; }
 function getFinnhubKey() { return localStorage.getItem("zs_fh_key") || ""; }
+function getGoldApiKey() { return localStorage.getItem("zs_goldapi_key") || ""; }
 
 /* ---------------- price data fetch ---------------- */
 
@@ -257,7 +282,7 @@ async function fetchTwelveData(symbol, interval, apiKey, outputsize = 150) {
 
 // Finnhub free tier (60 calls/min), direct API, no proxy. CORS behavior not
 // independently verified for this app -- wrapped defensively so a failure
-// (CORS included) just falls through to Yahoo rather than breaking anything.
+// (CORS included) throws cleanly rather than crashing anything downstream.
 async function fetchFinnhub(finnhubSymbol, resolution, count, apiKey) {
   const url = `https://finnhub.io/api/v1/forex/candle?symbol=${encodeURIComponent(finnhubSymbol)}&resolution=${resolution}&count=${count}&token=${encodeURIComponent(apiKey)}`;
   const res = await fetch(url);
@@ -265,28 +290,6 @@ async function fetchFinnhub(finnhubSymbol, resolution, count, apiKey) {
   const json = await res.json();
   if (json.s !== "ok" || !Array.isArray(json.t)) throw new Error(json.s || "Finnhub returned no data");
   return json.t.map((t, i) => ({ time: t * 1000, open: json.o[i], high: json.h[i], low: json.l[i], close: json.c[i], volume: json.v?.[i] || 0 }));
-}
-
-async function fetchYahoo(yahooSymbol, interval, range) {
-  const target = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
-  const proxies = [CORS_PROXY, CORS_PROXY_2, CORS_PROXY_3];
-  let lastErr;
-  for (const proxy of proxies) {
-    try {
-      const res = await fetch(proxy + encodeURIComponent(target));
-      if (!res.ok) throw new Error(`Yahoo relay ${res.status}`);
-      const json = await res.json();
-      const result = json?.chart?.result?.[0];
-      if (!result) throw new Error("No chart data");
-      const ts = result.timestamp || [];
-      const q = result.indicators.quote[0];
-      return ts.map((t, i) => ({ time: t * 1000, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] }))
-        .filter(c => c.open != null && c.high != null && c.low != null && c.close != null);
-    } catch (err) {
-      lastErr = err;
-    }
-  }
-  throw lastErr || new Error("Yahoo fetch failed");
 }
 
 // Binance's public market data endpoints are free, unauthenticated, and
@@ -312,10 +315,9 @@ function resampleToInterval(source, minutes) {
 function resampleTo4h(hourly) { return resampleToInterval(hourly, 240); }
 function resampleToDaily(fourHourly) { return resampleToInterval(fourHourly, 1440); }
 
-// The 4h series doubles as the source for the Daily tier (resampled locally,
-// no extra fetch) -- so 4h needs enough history for a meaningful EMA50 on
-// Daily bars (50+ daily candles = 300+ 4h candles), more than plain 4h
-// signal logic alone would need.
+// Yahoo removed entirely (per request -- it was the source of the lag).
+// This means Gold/Silver now genuinely require a Twelve Data or Finnhub key
+// to fetch anything at all; there's no more zero-signup fallback for metals.
 async function getCandlesFor(sym, tf, outputsize = 150) {
   if (sym.kind === "crypto") {
     const intervalMap = { "15m": "15m", "1h": "1h", "4h": "4h" };
@@ -327,23 +329,16 @@ async function getCandlesFor(sym, tf, outputsize = 150) {
   if (apiKey) {
     const intervalMap = { "15m": "15min", "1h": "1h", "4h": "4h" };
     try { return await fetchTwelveData(sym.twelveData, intervalMap[tf], apiKey, effectiveOutputsize); }
-    catch (err) { console.warn(`Twelve Data failed for ${sym.key} ${tf}, falling back:`, err.message); }
+    catch (err) { console.warn(`Twelve Data failed for ${sym.key} ${tf}, falling back to Finnhub:`, err.message); }
   }
   const fhKey = getFinnhubKey();
   if (fhKey) {
-    try {
-      const resolutionMap = { "15m": "15", "1h": "60", "4h": "60" };
-      const count = tf === "4h" ? 2500 : 500;
-      const raw = await fetchFinnhub(sym.finnhub, resolutionMap[tf], count, fhKey);
-      return tf === "4h" ? resampleTo4h(raw) : raw;
-    } catch (err) {
-      console.warn(`Finnhub failed for ${sym.key} ${tf}, falling back to Yahoo:`, err.message);
-    }
+    const resolutionMap = { "15m": "15", "1h": "60", "4h": "60" };
+    const count = tf === "4h" ? 2500 : 500;
+    const raw = await fetchFinnhub(sym.finnhub, resolutionMap[tf], count, fhKey);
+    return tf === "4h" ? resampleTo4h(raw) : raw;
   }
-  if (tf === "15m") return fetchYahoo(sym.yahoo, "15m", "5d");
-  if (tf === "1h") return fetchYahoo(sym.yahoo, "60m", "1mo");
-  const hourly = await fetchYahoo(sym.yahoo, "60m", "6mo"); // 6mo instead of 3mo: more bars for Daily resampling
-  return resampleTo4h(hourly);
+  throw new Error("No API key configured -- add a free Twelve Data or Finnhub key in ⚙ API key");
 }
 
 async function get1mCandlesFor(sym) {
@@ -351,14 +346,11 @@ async function get1mCandlesFor(sym) {
   const apiKey = getTwelveDataKey();
   if (apiKey) {
     try { return await fetchTwelveData(sym.twelveData, "1min", apiKey, 200); }
-    catch (err) { console.warn("Twelve Data 1min failed, falling back:", err.message); }
+    catch (err) { console.warn("Twelve Data 1min failed, falling back to Finnhub:", err.message); }
   }
   const fhKey = getFinnhubKey();
-  if (fhKey) {
-    try { return await fetchFinnhub(sym.finnhub, "1", 200, fhKey); }
-    catch (err) { console.warn("Finnhub 1min failed, falling back to Yahoo:", err.message); }
-  }
-  return fetchYahoo(sym.yahoo, "1m", "1d");
+  if (fhKey) return fetchFinnhub(sym.finnhub, "1", 200, fhKey);
+  throw new Error("No API key configured");
 }
 
 async function fetchLivePriceFor(sym) {
@@ -386,25 +378,27 @@ async function fetchLivePriceFor(sym) {
       if (json.c) return +json.c;
     } catch {}
   }
-  const target = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym.yahoo)}?interval=1m&range=1d`;
-  for (const proxy of [CORS_PROXY, CORS_PROXY_2, CORS_PROXY_3]) {
+  // GoldAPI.io: genuine spot XAU/XAG (sourced from FOREX.com/OANDA/SAXO).
+  const gaKey = getGoldApiKey();
+  if (gaKey && sym.goldapi) {
     try {
-      const res = await fetch(proxy + encodeURIComponent(target));
+      const res = await fetch(`https://www.goldapi.io/api/${sym.goldapi}/USD`, { headers: { "x-access-token": gaKey } });
       const json = await res.json();
-      const meta = json?.chart?.result?.[0]?.meta;
-      if (meta?.regularMarketPrice != null) return meta.regularMarketPrice;
+      if (json.price) return +json.price;
     } catch {}
   }
   return null;
 }
 
-// DXY (US Dollar Index) always via Yahoo -- it's shared context for the
-// metals cards, not worth spending Twelve Data credits on.
-const DXY_YAHOO = "DX-Y.NYB";
+// DXY (US Dollar Index) via Twelve Data's indices coverage -- unverified
+// exact free-tier symbol support, so this is wrapped defensively: if it
+// fails for any reason, DXY context just doesn't show rather than breaking
+// anything (see the try/catch around this call in scanAll).
 async function getDXYCandles(tf) {
-  if (tf === "1h") return fetchYahoo(DXY_YAHOO, "60m", "1mo");
-  const hourly = await fetchYahoo(DXY_YAHOO, "60m", "3mo");
-  return resampleTo4h(hourly);
+  const apiKey = getTwelveDataKey();
+  if (!apiKey) throw new Error("DXY requires a Twelve Data key (no Yahoo fallback anymore)");
+  const intervalMap = { "1h": "1h", "4h": "4h" };
+  return fetchTwelveData("DXY", intervalMap[tf], apiKey, tf === "4h" ? 500 : 200);
 }
 
 /* ---------------- indicators ---------------- */
@@ -1191,7 +1185,7 @@ function renderCard(sym, payload) {
       ? "Binance may be briefly unreachable — try Refresh in a minute."
       : (hasTD || hasFH)
         ? "Try Refresh in a minute — if it persists, your API key(s) may have hit their rate limit."
-        : `Yahoo's free feed without a key is unreliable for some networks/regions. Tap <b>⚙ API key</b> above and add a free <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a> key.`;
+        : `Gold/Silver need a free <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a> or <a class="ghost-link" href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a> key to fetch any data at all — tap <b>⚙ API key</b> above to add one (no card required for either).`;
     detailsEl.innerHTML = `<div class="reason">Couldn't load data (${error}). ${suggestion}</div>`;
     return;
   }
@@ -1535,19 +1529,29 @@ document.getElementById("toggleFinnhub").addEventListener("click", () => {
   input.type = showing ? "password" : "text";
   btn.textContent = showing ? "Show" : "Hide";
 });
+document.getElementById("toggleGoldApi").addEventListener("click", () => {
+  const input = document.getElementById("goldApiInput");
+  const btn = document.getElementById("toggleGoldApi");
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  btn.textContent = showing ? "Show" : "Hide";
+});
 document.getElementById("apiKeyBtn").addEventListener("click", () => {
   const box = document.getElementById("apiKeyBox");
   box.style.display = box.style.display === "none" ? "block" : "none";
   document.getElementById("apiKeyInput").value = getTwelveDataKey();
   document.getElementById("finnhubInput").value = getFinnhubKey();
+  document.getElementById("goldApiInput").value = getGoldApiKey();
   document.getElementById("apiKeyInput").type = "password";
   document.getElementById("finnhubInput").type = "password";
+  document.getElementById("goldApiInput").type = "password";
   document.getElementById("toggleApiKey").textContent = "Show";
   document.getElementById("toggleFinnhub").textContent = "Show";
+  document.getElementById("toggleGoldApi").textContent = "Show";
   const note = document.getElementById("keySourceNote");
   if (note) {
-    const tdSet = !!localStorage.getItem("zs_td_key"), fhSet = !!localStorage.getItem("zs_fh_key");
-    note.textContent = `Twelve Data: ${tdSet ? "key saved on this device" : "not set"} · Finnhub: ${fhSet ? "key saved on this device" : "not set"}`;
+    const tdSet = !!localStorage.getItem("zs_td_key"), fhSet = !!localStorage.getItem("zs_fh_key"), gaSet = !!localStorage.getItem("zs_goldapi_key");
+    note.textContent = `Twelve Data: ${tdSet ? "key saved" : "not set"} · Finnhub: ${fhSet ? "key saved" : "not set"} · GoldAPI: ${gaSet ? "key saved" : "not set"}`;
   }
 });
 document.getElementById("saveApiKey").addEventListener("click", () => {
@@ -1573,6 +1577,16 @@ document.getElementById("clearFinnhub").addEventListener("click", () => {
   document.getElementById("finnhubInput").value = "";
   document.getElementById("apiKeyBox").style.display = "none";
   scanAll();
+});
+document.getElementById("saveGoldApi").addEventListener("click", () => {
+  const val = document.getElementById("goldApiInput").value.trim();
+  if (val) localStorage.setItem("zs_goldapi_key", val);
+  document.getElementById("apiKeyBox").style.display = "none";
+});
+document.getElementById("clearGoldApi").addEventListener("click", () => {
+  localStorage.removeItem("zs_goldapi_key");
+  document.getElementById("goldApiInput").value = "";
+  document.getElementById("apiKeyBox").style.display = "none";
 });
 document.getElementById("notifyBtn").addEventListener("click", async () => {
   if (!("Notification" in window)) { alert("This browser doesn't support notifications."); return; }
