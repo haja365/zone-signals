@@ -222,7 +222,7 @@ function biasAt(ind, i) {
 // Same $0.01-per-pip convention as Exness and virtually all CFD brokers,
 // for both XAU/USD and XAG/USD. MIN_PIPS/MAX_PIPS env vars mirror the
 // app's Size-tab settings (localStorage has no equivalent here).
-const PIP_SIZE = 0.01;
+const PIP_SIZE = 0.10;
 const MIN_PIPS = parseFloat(process.env.MIN_PIPS) || 100;
 const MAX_PIPS = parseFloat(process.env.MAX_PIPS) || 200;
 
@@ -299,57 +299,51 @@ function smcSupports(smc, direction) {
   return false;
 }
 
-// Loosened four-tier confluence: Daily still sets the bias, but only ONE of
-// 4H/1H needs to agree (not both), and the 15m trigger accepts a candle
-// pattern OR an SMC structure break -- matches the app's buildSignal exactly.
+// Two-tier confluence, matching the app exactly: 1H sets the bias and must
+// be in a zone, 15M supplies the trigger (candle pattern or SMC structure
+// break). Daily/4H are no longer required to fire a signal.
 function buildSignal(tfReads) {
-  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
-  if (!daily.bias || daily.bias === "neutral") return { status: "watching", reason: "Daily has no clear trend right now — no bias to trade either direction" };
-  const direction = daily.bias === "bullish" ? "buy" : "sell";
+  const h1 = tfReads["1h"], m15 = tfReads["15m"];
+  if (!h1.bias || h1.bias === "neutral") return { status: "watching", reason: "1H has no clear trend right now — no bias to trade either direction" };
+  const direction = h1.bias === "bullish" ? "buy" : "sell";
   const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
 
-  const h4Agrees = h4.bias === daily.bias;
-  const h1Agrees = h1.bias === daily.bias;
-  const higherTFAligned = h4Agrees || h1Agrees;
-
-  const h1InZone = h1Agrees && h1.zone && h1.zone.direction === direction;
-  const h4InZone = h4Agrees && h4.zone && h4.zone.direction === direction;
-  const inZone = h1InZone || h4InZone;
-  const zoneLevel = h1InZone ? h1.zone.level : h4InZone ? h4.zone.level : null;
+  const inZone = h1.zone && h1.zone.direction === direction;
+  const zoneLevel = inZone ? h1.zone.level : null;
 
   const patternConfirms = m15.pattern && m15.pattern.bias === direction;
   const structureConfirms = m15.smc?.structure && m15.smc.structure.direction === wantSmcDir;
-  const m15Confirms = higherTFAligned && inZone && (patternConfirms || structureConfirms);
+  const m15Confirms = inZone && (patternConfirms || structureConfirms);
 
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
 
-  if (!higherTFAligned || !inZone || !m15Confirms) {
-    const reason = !higherTFAligned ? "Neither 4H nor 1H aligned with Daily yet"
-      : !inZone ? "Aligned with Daily, but price isn't at a zone yet"
-      : "Aligned and in a zone — waiting for a 15m candle or structure break to confirm";
-    return { status: "watching", direction, preview, reason, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
+  if (!inZone || !m15Confirms) {
+    const reason = !inZone ? "1H trend set, but price isn't at a zone yet"
+      : "In a zone — waiting for a 15m candle or structure break to confirm";
+    return { status: "watching", direction, preview, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
 
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
   const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
 }
 
-// Weighted 0-100 confidence score. Timeframe alignment carries the most
-// weight since it's the backbone of the confluence chain; everything else
-// rewards extra confirming factors, and news proximity only ever subtracts.
+// Weighted 0-100 confidence score. Simplified vs. the app's version: this
+// script doesn't fetch Daily/4H at all (to keep API credit usage sane on a
+// 5-minute schedule, now that Daily/4H aren't required for the signal to
+// fire either), so the timeframe-alignment component just confirms 1H
+// itself is non-neutral rather than checking 3 timeframes.
 function computeConfidence(tfReads, direction, newsSoon) {
   if (!direction) return null;
-  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
-  const wantBias = direction === "buy" ? "bullish" : "bearish";
+  const h1 = tfReads["1h"], m15 = tfReads["15m"];
   const checks = [];
   let score = 0;
 
-  const tfMatches = [daily.bias, h4.bias, h1.bias].filter(b => b === wantBias).length;
-  const trendPts = (tfMatches / 3) * 35;
+  const h1Confirmed = h1.bias !== "neutral";
+  const trendPts = h1Confirmed ? 35 : 0;
   score += trendPts;
-  checks.push({ label: `Timeframe alignment (${tfMatches}/3: Daily, 4H, 1H)`, pass: tfMatches === 3, points: Math.round(trendPts) });
+  checks.push({ label: "1H trend confirmed (Daily/4H not fetched here)", pass: h1Confirmed, points: trendPts });
 
   const rsi15 = m15.rsi14;
   let momentumPts = 0;
@@ -461,30 +455,46 @@ function formatMessage(sym, signal, confidence) {
 /* ---------------- main ---------------- */
 
 async function checkSymbol(sym, newsSoon, state) {
-  const [c15, c1h, c4h] = await Promise.all([getCandlesFor(sym, "15m"), getCandlesFor(sym, "1h"), getCandlesFor(sym, "4h")]);
-  const cDaily = resampleToDaily(c4h);
-  const tfReads = {
-    "15m": analyzeTimeframe(c15),
-    "1h": analyzeTimeframe(c1h),
-    "4h": analyzeTimeframe(c4h),
-    "daily": analyzeTimeframe(cDaily),
-  };
+  const [c15, c1h] = await Promise.all([getCandlesFor(sym, "15m"), getCandlesFor(sym, "1h")]);
+  const tfReads = { "15m": analyzeTimeframe(c15), "1h": analyzeTimeframe(c1h) };
+  const lastPrice = c15[c15.length - 1]?.close ?? null;
+
+  // If a trade is already open for this symbol, check whether price has hit
+  // SL or TP1 -- only once it resolves does the next signal get a chance.
+  const openTrade = state[sym.key]?.open;
+  if (openTrade && lastPrice != null) {
+    const hitSL = openTrade.direction === "buy" ? lastPrice <= openTrade.stopLoss : lastPrice >= openTrade.stopLoss;
+    const hitTP1 = openTrade.direction === "buy" ? lastPrice >= openTrade.tp1 : lastPrice <= openTrade.tp1;
+    if (hitSL || hitTP1) {
+      const outcome = hitTP1 ? "WIN (TP1 hit)" : "LOSS (SL hit)";
+      console.log(`${sym.key}: open trade resolved -- ${outcome}`);
+      await sendTelegram(`${hitTP1 ? "✅" : "❌"} <b>${sym.label} trade closed: ${outcome}</b>\nNext signal for ${sym.label} can now fire.`);
+      delete state[sym.key].open;
+      return true;
+    }
+    console.log(`${sym.key}: still in an open ${openTrade.direction} trade, waiting for SL/TP1 before checking for a new signal.`);
+    return false;
+  }
+
   const signal = buildSignal(tfReads);
   const confidence = computeConfidence(tfReads, signal.direction, newsSoon);
 
-  console.log(`${sym.key}: daily=${tfReads.daily.bias} 4h=${tfReads["4h"].bias} 1h=${tfReads["1h"].bias} 15m=${tfReads["15m"].pattern?.type || "none"} -> ${signal.status}${confidence ? ` (${confidence.score}%)` : ""}`);
+  console.log(`${sym.key}: 1h=${tfReads["1h"].bias} 15m=${tfReads["15m"].pattern?.type || "none"} -> ${signal.status}${confidence ? ` (${confidence.score}%)` : ""}`);
 
   if (signal.status !== "signal") return false;
 
   const signature = `${sym.key}:${signal.direction}:${signal.candleTime}`;
-  if (state[sym.key] === signature) {
+  if (state[sym.key]?.lastSignature === signature) {
     console.log(`${sym.key}: already notified for this candle, skipping.`);
     return false;
   }
 
   await sendTelegram(formatMessage(sym, signal, confidence));
   console.log(`${sym.key}: notification sent.`);
-  state[sym.key] = signature;
+  state[sym.key] = {
+    lastSignature: signature,
+    open: { direction: signal.direction, entry: signal.entry, stopLoss: signal.stopLoss, tp1: signal.tp1, candleTime: signal.candleTime },
+  };
   return true;
 }
 
