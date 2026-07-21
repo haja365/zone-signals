@@ -134,6 +134,15 @@
 
 <div id="apiKeyBox" class="setup-box" style="display:none;">
   <div id="keySourceNote" style="font-family:var(--mono); font-size:10.5px; color:var(--gold); margin-bottom:8px;"></div>
+  <div id="apiUsagePanel" style="margin-bottom:12px;"></div>
+  <div class="reason" style="margin-bottom:12px;">
+    <b style="color:var(--ink);">Compared (verified, not guessed):</b> Twelve
+    Data = 800/day, 8/min. Finnhub = 60/min, no documented daily cap — the
+    highest real throughput of the three. GoldAPI.io = 500/month (~17/day) —
+    weakest by far, fine only for the occasional live-price check, never as
+    a main feed. If reliability at your current 2-min refresh matters most,
+    Finnhub is the strongest single option.
+  </div>
   <b>Required: Gold &amp; Silver need one of these to fetch any data</b><br/>
   Yahoo's free relay has been removed (it was the source of real lag) — there's
   no zero-signup fallback for metals anymore. A free
@@ -269,8 +278,59 @@ function getGoldApiKey() { return localStorage.getItem("zs_goldapi_key") || ""; 
 
 /* ---------------- price data fetch ---------------- */
 
+// Usage tracking: counts calls per provider, resetting automatically at UTC
+// midnight, so the ⚙ panel can show how close you are to each free-tier
+// limit. Verified against each provider's own docs, not guessed:
+const API_LIMITS = {
+  twelvedata: { perDay: 800, perMinute: 8, label: "Twelve Data" },
+  finnhub: { perDay: null, perMinute: 60, label: "Finnhub" }, // no documented daily cap, just the per-minute rate limit
+  goldapi: { perDay: Math.round(500 / 30), perMonth: 500, label: "GoldAPI.io" }, // 500/month, no daily figure published -- averaged for display
+};
+function todayKey() { return new Date().toISOString().slice(0, 10); } // UTC date
+function trackApiCall(provider) {
+  try {
+    const key = `zs_usage_${provider}`;
+    const stored = JSON.parse(localStorage.getItem(key) || "null");
+    const today = todayKey();
+    const next = (stored && stored.date === today) ? { date: today, count: stored.count + 1 } : { date: today, count: 1 };
+    localStorage.setItem(key, JSON.stringify(next));
+  } catch {}
+}
+function getApiUsage(provider) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(`zs_usage_${provider}`) || "null");
+    if (!stored || stored.date !== todayKey()) return 0;
+    return stored.count;
+  } catch { return 0; }
+}
+
+function renderApiUsage() {
+  const el = document.getElementById("apiUsagePanel");
+  if (!el) return;
+  const keysSet = { twelvedata: !!getTwelveDataKey(), finnhub: !!getFinnhubKey(), goldapi: !!getGoldApiKey() };
+  el.innerHTML = Object.entries(API_LIMITS).filter(([key]) => keysSet[key]).map(([key, cfg]) => {
+    const used = getApiUsage(key);
+    let label, pct;
+    if (cfg.perDay) {
+      pct = Math.min(100, Math.round((used / cfg.perDay) * 100));
+      label = cfg.perMonth ? `${used} today (~${cfg.perDay}/day avg of ${cfg.perMonth}/month)` : `${used} / ${cfg.perDay} today`;
+    } else {
+      pct = null;
+      label = `${used} calls today (no daily cap documented, ${cfg.perMinute}/min limit)`;
+    }
+    const color = pct == null ? "var(--ink-dim)" : pct >= 90 ? "var(--sell)" : pct >= 70 ? "var(--gold)" : "var(--buy)";
+    return `<div style="margin-top:6px;">
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;font-family:var(--mono);">
+        <span style="color:var(--ink-dim);">${cfg.label}</span><span style="color:${color};">${label}</span>
+      </div>
+      ${pct != null ? `<div style="height:4px;background:#201b13;border-radius:2px;margin-top:3px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};"></div></div>` : ""}
+    </div>`;
+  }).join("") || `<div class="reason">No keys saved yet — usage tracking starts once you add one.</div>`;
+}
+
 async function fetchTwelveData(symbol, interval, apiKey, outputsize = 150) {
   const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${encodeURIComponent(apiKey)}`;
+  trackApiCall("twelvedata");
   const res = await fetch(url);
   const json = await res.json();
   if (json.status === "error" || json.code >= 400) throw new Error(json.message || `Twelve Data ${res.status}`);
@@ -285,6 +345,7 @@ async function fetchTwelveData(symbol, interval, apiKey, outputsize = 150) {
 // (CORS included) throws cleanly rather than crashing anything downstream.
 async function fetchFinnhub(finnhubSymbol, resolution, count, apiKey) {
   const url = `https://finnhub.io/api/v1/forex/candle?symbol=${encodeURIComponent(finnhubSymbol)}&resolution=${resolution}&count=${count}&token=${encodeURIComponent(apiKey)}`;
+  trackApiCall("finnhub");
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Finnhub ${res.status}`);
   const json = await res.json();
@@ -365,6 +426,7 @@ async function fetchLivePriceFor(sym) {
   const apiKey = getTwelveDataKey();
   if (apiKey) {
     try {
+      trackApiCall("twelvedata");
       const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(sym.twelveData)}&apikey=${encodeURIComponent(apiKey)}`);
       const json = await res.json();
       if (json.price) return +json.price;
@@ -373,6 +435,7 @@ async function fetchLivePriceFor(sym) {
   const fhKey = getFinnhubKey();
   if (fhKey) {
     try {
+      trackApiCall("finnhub");
       const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym.finnhub)}&token=${encodeURIComponent(fhKey)}`);
       const json = await res.json();
       if (json.c) return +json.c;
@@ -382,6 +445,7 @@ async function fetchLivePriceFor(sym) {
   const gaKey = getGoldApiKey();
   if (gaKey && sym.goldapi) {
     try {
+      trackApiCall("goldapi");
       const res = await fetch(`https://www.goldapi.io/api/${sym.goldapi}/USD`, { headers: { "x-access-token": gaKey } });
       const json = await res.json();
       if (json.price) return +json.price;
@@ -1553,6 +1617,7 @@ document.getElementById("apiKeyBtn").addEventListener("click", () => {
     const tdSet = !!localStorage.getItem("zs_td_key"), fhSet = !!localStorage.getItem("zs_fh_key"), gaSet = !!localStorage.getItem("zs_goldapi_key");
     note.textContent = `Twelve Data: ${tdSet ? "key saved" : "not set"} · Finnhub: ${fhSet ? "key saved" : "not set"} · GoldAPI: ${gaSet ? "key saved" : "not set"}`;
   }
+  renderApiUsage();
 });
 document.getElementById("saveApiKey").addEventListener("click", () => {
   const val = document.getElementById("apiKeyInput").value.trim();
@@ -1618,6 +1683,7 @@ renderJournal();
 updateSessionBadge();
 setInterval(updateSessionBadge, 30 * 1000);
 setInterval(renderDataHealth, 30 * 1000);
+setInterval(renderApiUsage, 30 * 1000);
 scanAll().then(setUpdatedLabel);
 setInterval(async () => { await scanAll(); setUpdatedLabel(); }, 2 * 60 * 1000);
 function updateHeartbeats() {
