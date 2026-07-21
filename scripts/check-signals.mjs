@@ -219,8 +219,15 @@ function biasAt(ind, i) {
   if (e20 < e50 && r < 55) return "bearish";
   return "neutral";
 }
+// Same $0.01-per-pip convention as Exness and virtually all CFD brokers,
+// for both XAU/USD and XAG/USD. MIN_PIPS/MAX_PIPS env vars mirror the
+// app's Size-tab settings (localStorage has no equivalent here).
+const PIP_SIZE = 0.01;
+const MIN_PIPS = parseFloat(process.env.MIN_PIPS) || 100;
+const MAX_PIPS = parseFloat(process.env.MAX_PIPS) || 200;
+
 function zoneAt(candles, ind, i, direction) {
-  const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 1.5;
+  const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 2.5;
   const levels = [];
   if (e50 != null) levels.push(e50);
   const relevant = (direction === "buy" ? ind.swingLows : ind.swingHighs).filter(s => s.index <= i - 2).slice(-8);
@@ -228,6 +235,9 @@ function zoneAt(candles, ind, i, direction) {
   const nearLevel = levels.find(lvl => Math.abs(price - lvl) <= proximity);
   return { inZone: !!nearLevel, level: nearLevel, atrNow };
 }
+
+// SL still comes off ATR/structure. TP1/TP2/TP3 target the configured pip
+// range instead of pure risk-multiples.
 function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoIndex) {
   const atrNow = atrRaw || entry * 0.003;
   const relevantSwings = (direction === "buy" ? swingLows : swingHighs).filter(s => uptoIndex == null || s.index <= uptoIndex - 2);
@@ -236,10 +246,17 @@ function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoInde
   if (direction === "buy") { const s = nearestStructure != null ? nearestStructure - atrNow * 0.3 : entry - atrNow * 1.5; stopLoss = Math.min(s, entry - atrNow * 1.2); }
   else { const s = nearestStructure != null ? nearestStructure + atrNow * 0.3 : entry + atrNow * 1.5; stopLoss = Math.max(s, entry + atrNow * 1.2); }
   const risk = Math.abs(entry - stopLoss);
-  const tp1 = direction === "buy" ? entry + risk * 1.5 : entry - risk * 1.5;
-  const tp2 = direction === "buy" ? entry + risk * 3 : entry - risk * 3;
-  const tp3 = direction === "buy" ? entry + risk * 4.5 : entry - risk * 4.5;
-  return { stopLoss, tp1, tp2, tp3, risk };
+
+  const minDist = MIN_PIPS * PIP_SIZE, midDist = ((MIN_PIPS + MAX_PIPS) / 2) * PIP_SIZE, maxDist = MAX_PIPS * PIP_SIZE;
+  const tp1 = direction === "buy" ? entry + minDist : entry - minDist;
+  const tp2 = direction === "buy" ? entry + midDist : entry - midDist;
+  const tp3 = direction === "buy" ? entry + maxDist : entry - maxDist;
+
+  const atrUnits = atrNow > 0 ? minDist / atrNow : null;
+  const estBars15m = atrUnits != null ? Math.round(atrUnits * atrUnits) : null;
+  const feasibility = estBars15m == null ? null : estBars15m <= 8 ? "typical" : estBars15m <= 30 ? "stretch" : "ambitious";
+
+  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: risk > 0 ? minDist / risk : null, rrTp2: risk > 0 ? midDist / risk : null, rrTp3: risk > 0 ? maxDist / risk : null, feasibility, estBars15m };
 }
 function biasOnly(candles) {
   if (!candles || candles.length < 10) return "neutral";
@@ -282,27 +299,41 @@ function smcSupports(smc, direction) {
   return false;
 }
 
-// Four-tier confluence: Daily sets the bias, 4H must agree, 1H must agree
-// and be sitting in a zone, 15M supplies the entry trigger candle. Stricter
-// than the old 3-tier chain -- fewer signals, each one better supported.
+// Loosened four-tier confluence: Daily still sets the bias, but only ONE of
+// 4H/1H needs to agree (not both), and the 15m trigger accepts a candle
+// pattern OR an SMC structure break -- matches the app's buildSignal exactly.
 function buildSignal(tfReads) {
   const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
   if (!daily.bias || daily.bias === "neutral") return { status: "watching", reason: "Daily has no clear trend right now — no bias to trade either direction" };
   const direction = daily.bias === "bullish" ? "buy" : "sell";
-  const h4Aligned = h4.bias === daily.bias;
-  const h1Aligned = h4Aligned && h1.bias === daily.bias && h1.zone && h1.zone.direction === direction;
-  const m15Confirms = h1Aligned && m15.pattern && m15.pattern.bias === direction;
+  const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
+
+  const h4Agrees = h4.bias === daily.bias;
+  const h1Agrees = h1.bias === daily.bias;
+  const higherTFAligned = h4Agrees || h1Agrees;
+
+  const h1InZone = h1Agrees && h1.zone && h1.zone.direction === direction;
+  const h4InZone = h4Agrees && h4.zone && h4.zone.direction === direction;
+  const inZone = h1InZone || h4InZone;
+  const zoneLevel = h1InZone ? h1.zone.level : h4InZone ? h4.zone.level : null;
+
+  const patternConfirms = m15.pattern && m15.pattern.bias === direction;
+  const structureConfirms = m15.smc?.structure && m15.smc.structure.direction === wantSmcDir;
+  const m15Confirms = higherTFAligned && inZone && (patternConfirms || structureConfirms);
+
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
 
-  if (!h4Aligned || !h1Aligned || !m15Confirms) {
-    const reason = !h4Aligned ? "4H not yet aligned with Daily"
-      : !h1Aligned ? "1H not yet aligned / price not in a zone"
-      : "1H is aligned — waiting for a 15m candle to confirm entry";
+  if (!higherTFAligned || !inZone || !m15Confirms) {
+    const reason = !higherTFAligned ? "Neither 4H nor 1H aligned with Daily yet"
+      : !inZone ? "Aligned with Daily, but price isn't at a zone yet"
+      : "Aligned and in a zone — waiting for a 15m candle or structure break to confirm";
     return { status: "watching", direction, preview, reason, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
+
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: 1.5, riskRewardTp2: 3, riskRewardTp3: 4.5, pattern: m15.pattern.type, zoneLevel: h1.zone.level, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern.type }, candleTime: m15.candleTime, smc: m15.smc };
+  const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
 }
 
 // Weighted 0-100 confidence score. Timeframe alignment carries the most
@@ -406,16 +437,22 @@ function formatMessage(sym, signal, confidence) {
     ? [signal.smc.fvg?.type, signal.smc.orderBlock?.type, signal.smc.structure && `${signal.smc.structure.kind} (${signal.smc.structure.direction})`]
         .filter(Boolean).map(s => s.replace(/_/g, " ")).join(", ")
     : null;
+  const rr = n => n == null ? "—" : n.toFixed(1);
+  const feasText = signal.feasibility === "typical" ? "reachable within a normal candle or two"
+    : signal.feasibility === "stretch" ? "a bit of a stretch given current volatility"
+    : signal.feasibility === "ambitious" ? "ambitious right now -- volatility is low relative to this target"
+    : null;
   const lines = [
     `${emoji} <b>${signal.direction.toUpperCase()} ${sym.label}</b>`,
     ``,
     `Entry: ${fmt(signal.entry, sym.decimals)}`,
     `SL: ${fmt(signal.stopLoss, sym.decimals)}`,
-    `TP1: ${fmt(signal.tp1, sym.decimals)} (1:${signal.riskRewardTp1})`,
-    `TP2: ${fmt(signal.tp2, sym.decimals)} (1:${signal.riskRewardTp2})`,
-    `TP3: ${fmt(signal.tp3, sym.decimals)} (1:${signal.riskRewardTp3})`,
+    `TP1 (${MIN_PIPS}p): ${fmt(signal.tp1, sym.decimals)} (1:${rr(signal.riskRewardTp1)})`,
+    `TP2 (mid): ${fmt(signal.tp2, sym.decimals)} (1:${rr(signal.riskRewardTp2)})`,
+    `TP3 (${MAX_PIPS}p): ${fmt(signal.tp3, sym.decimals)} (1:${rr(signal.riskRewardTp3)})`,
     `15m trigger: ${signal.pattern.replace(/_/g, " ")}`,
   ];
+  if (feasText) lines.push(`TP1 feasibility: ${feasText}`);
   if (smcText) lines.push(`Smart Money: ${smcText}`);
   if (confidence) lines.push(``, `Confidence: ${confidence.score}%`);
   return lines.join("\n");
