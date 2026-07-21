@@ -621,12 +621,13 @@ function smcSupports(smc, direction) {
   return false;
 }
 
-// Two-tier confluence, by request: 1H sets the bias and must be sitting in
-// a zone, 15M supplies the entry trigger (candle pattern or SMC structure
-// break). Daily/4H are no longer required for the signal to fire -- they're
-// still fetched and shown for context (trend table, confidence score) but
-// don't gate the trigger itself.
-function buildSignal(tfReads) {
+// Two-tier confluence: 1H sets the bias and must be sitting in a zone, 15M
+// supplies the entry trigger (candle pattern or SMC structure break). On
+// top of that, every confidence-checklist factor must also pass (RSI
+// range, zone, SMC, clean 1H trend, no imminent news) before this counts
+// as a real "signal" -- a partial match stays "watching" with the
+// checklist visible so it's clear what's still missing.
+function buildSignal(tfReads, newsSoon) {
   const h1 = tfReads["1h"], m15 = tfReads["15m"];
   if (!h1.bias || h1.bias === "neutral") return { status: "watching", reason: "1H has no clear trend right now — no bias to trade either direction" };
   const direction = h1.bias === "bullish" ? "buy" : "sell";
@@ -641,32 +642,39 @@ function buildSignal(tfReads) {
 
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
+  const confidence = computeConfidence(tfReads, direction, newsSoon);
+  const allChecksPass = !!confidence && confidence.checks.every(c => c.pass);
 
-  if (!inZone || !m15Confirms) {
-    const reason = !inZone ? "1H trend set, but price isn't at a zone yet"
-      : "In a zone — waiting for a 15m candle or structure break to confirm";
-    return { status: "watching", direction, preview, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
+  if (!inZone || !m15Confirms || !allChecksPass) {
+    let reason;
+    if (!inZone) reason = "1H trend set, but price isn't at a zone yet";
+    else if (!m15Confirms) reason = "In a zone — waiting for a 15m candle or structure break to confirm";
+    else {
+      const failed = confidence.checks.filter(c => !c.pass).map(c => c.label);
+      reason = `Trigger conditions met, but not every confluence factor lines up yet: ${failed.join("; ")}`;
+    }
+    return { status: "watching", direction, preview, confidence, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
 
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
   const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc, confidence };
 }
 
-// Weighted 0-100 confidence score. Timeframe alignment carries the most
-// weight since it's the backbone of the confluence chain; everything else
-// rewards extra confirming factors, and news proximity only ever subtracts.
+// Weighted 0-100 confidence score, matching the actual 1H+15M strategy
+// (Daily/4H are no longer part of the signal logic, so they're no longer
+// part of the score either). Every check here can also gate whether a
+// candidate setup is allowed to become a real "signal" -- see buildSignal.
 function computeConfidence(tfReads, direction, newsSoon) {
   if (!direction) return null;
-  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
-  const wantBias = direction === "buy" ? "bullish" : "bearish";
+  const h1 = tfReads["1h"], m15 = tfReads["15m"];
   const checks = [];
   let score = 0;
 
-  const tfMatches = [daily.bias, h4.bias, h1.bias].filter(b => b === wantBias).length;
-  const trendPts = (tfMatches / 3) * 35;
+  const h1Confirmed = h1.bias !== "neutral";
+  const trendPts = h1Confirmed ? 35 : 0;
   score += trendPts;
-  checks.push({ label: `Timeframe alignment (${tfMatches}/3: Daily, 4H, 1H)`, pass: tfMatches === 3, points: Math.round(trendPts) });
+  checks.push({ label: "1H trend confirmed", pass: h1Confirmed, points: trendPts });
 
   const rsi15 = m15.rsi14;
   let momentumPts = 0;
@@ -732,6 +740,18 @@ function runBacktest(candles15, candles1h) {
     const smc = findRecentSMC(candles15, ind15, i, h1Bias);
     const structureConfirms = smc.structure && smc.structure.direction === wantSmcDir;
     if (!patternConfirms && !structureConfirms) continue;
+
+    // Same confidence checklist as the live signal must all pass here too
+    // (news-proximity excluded -- no historical calendar data to check
+    // against), or this backtest would be testing an easier strategy than
+    // what's actually live.
+    const rsi15 = ind15.rsi14[i];
+    const rsiOk = rsi15 != null && (direction === "buy" ? (rsi15 >= 45 && rsi15 <= 68) : (rsi15 <= 55 && rsi15 >= 32));
+    const smcAligned = smcSupports(smc, direction) || smcSupports(findRecentSMC(candles1h, ind1h, p1, h1Bias), direction);
+    const er1h = efficiencyRatio(candles1h.map(c => c.close), p1, 20);
+    const erOk = er1h != null && er1h >= 0.3;
+    if (!rsiOk || !smcAligned || !erOk) continue;
+
     const entry = candles15[i].close;
     const { stopLoss, tp1 } = computeLevels(direction, entry, ind15.atr14[i], ind15.swingLows, ind15.swingHighs, i);
     let outcome = "timeout";
@@ -1452,8 +1472,8 @@ async function scanSymbol(sym, dxy, newsSoon) {
     const [c15, c1h, c4h] = await Promise.all([getCandlesFor(sym, "15m"), getCandlesFor(sym, "1h"), getCandlesFor(sym, "4h")]);
     const cDaily = resampleToDaily(c4h);
     const tfReads = { "15m": analyzeTimeframe(c15), "1h": analyzeTimeframe(c1h), "4h": analyzeTimeframe(c4h), "daily": analyzeTimeframe(cDaily) };
-    const signal = buildSignal(tfReads);
-    const confidence = computeConfidence(tfReads, signal.direction, newsSoon);
+    const signal = buildSignal(tfReads, newsSoon);
+    const confidence = signal.confidence || null;
     const lastPrice = c15[c15.length - 1]?.close ?? null;
     const payload = { candles: { "15m": c15.slice(-120), "1h": c1h.slice(-120), "4h": c4h.slice(-120) }, tfReads, signal, confidence, lastPrice, dxy: sym.kind === "metal" ? dxy : null };
     symbolState[sym.key].data = payload;
