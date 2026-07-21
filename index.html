@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>Zone Signals — Gold &amp; Silver</title>
+<meta name="theme-color" content="#12100c" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<style>
+  :root{
+    --bg:#0e0c09; --panel:#17140f; --panel-border:#2a251b; --ink:#f3ede1;
+    --ink-dim:#a89e88; --gold:#e8b649; --buy:#3fb28f; --sell:#e0562f;
+    --mono:'SF Mono','Menlo',ui-monospace,monospace; --sans:-apple-system,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);font-family:var(--sans);}
+  body{padding-bottom:40px;}
+  header{padding:18px 14px 12px;border-bottom:1px solid var(--panel-border);
+    position:sticky;top:0;background:rgba(14,12,9,0.96);backdrop-filter:blur(6px);z-index:10;}
+  .brand{display:flex;align-items:baseline;gap:9px;}
+  .brand .mark{color:var(--gold);font-family:var(--mono);font-size:12px;letter-spacing:2px;}
+  h1{font-size:18px;margin:0;font-weight:650;letter-spacing:-0.2px;}
+  .sub{color:var(--ink-dim);font-size:11.5px;margin-top:4px;font-family:var(--mono);}
+  .topbar{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap;}
+  button.pill{background:var(--panel);color:var(--ink);border:1px solid var(--panel-border);
+    padding:9px 12px;border-radius:20px;font-size:12px;cursor:pointer;min-height:36px;}
+  button.pill.on{border-color:var(--gold);color:var(--gold);}
+  button.pill.small{padding:5px 10px;font-size:10.5px;min-height:auto;}
+  main{padding:12px 12px 0;}
+  .card{background:var(--panel);border:1px solid var(--panel-border);border-radius:14px;margin-bottom:12px;overflow:hidden;}
+  .card-head{padding:14px 15px 9px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .asset-name{font-size:16px;font-weight:650;}
+  .asset-price{font-family:var(--mono);font-size:23px;margin-top:3px;}
+  .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--buy);
+    vertical-align:middle;margin-bottom:3px;animation:pulse 2s ease-in-out infinite;}
+  .live-dot.stale{background:var(--ink-dim);animation:none;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.25;}}
+  .status-badge{font-family:var(--mono);font-size:10.5px;padding:5px 9px;border-radius:7px;
+    text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap;}
+  .status-badge.signal-buy{background:rgba(63,178,143,0.18);color:var(--buy);border:1px solid rgba(63,178,143,0.4);}
+  .status-badge.signal-sell{background:rgba(224,86,47,0.18);color:var(--sell);border:1px solid rgba(224,86,47,0.4);}
+  .status-badge.watching{background:rgba(122,114,95,0.15);color:var(--ink-dim);border:1px solid var(--panel-border);}
+  .status-badge.err{background:rgba(224,86,47,0.1);color:var(--sell);border:1px solid rgba(224,86,47,0.3);}
+  .tf-row{display:flex;gap:6px;padding:0 15px 11px;flex-wrap:wrap;}
+  .tf-chip{font-family:var(--mono);font-size:10.5px;padding:5px 8px;border-radius:6px;
+    background:#1d1912;color:var(--ink-dim);border:1px solid var(--panel-border);}
+  .tf-chip b{color:var(--ink);font-weight:600;}
+  .tf-chip.bull{color:var(--buy);} .tf-chip.bear{color:var(--sell);}
+  .chart{height:220px;width:100%;display:block;touch-action:none;}
+  .tabs{display:flex;gap:4px;padding:8px 15px 0;flex-wrap:wrap;}
+  .tab{font-family:var(--mono);font-size:11px;padding:6px 10px;border-radius:6px 6px 0 0;
+    color:var(--ink-dim);cursor:pointer;border:1px solid transparent;}
+  .tab.active{color:var(--gold);border-color:var(--panel-border);border-bottom-color:var(--panel);}
+  .symtabs{display:flex;gap:6px;padding:12px 15px 0;flex-wrap:wrap;}
+  .asset-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+  @media (min-width:760px){ .asset-grid{grid-template-columns:1fr 1fr;} }
+  .tool-tabs{display:flex;gap:2px;padding:4px;background:#141110;border-bottom:1px solid var(--panel-border);overflow-x:auto;}
+  .tool-tab{font-family:var(--mono);font-size:11.5px;padding:9px 14px;border-radius:8px;color:var(--ink-dim);
+    cursor:pointer;white-space:nowrap;flex:1;text-align:center;}
+  .tool-tab.active{color:var(--gold);background:rgba(232,182,73,0.1);}
+  .tool-panel{animation:fadeIn 0.15s ease-in;}
+  @keyframes fadeIn{from{opacity:0.4;}to{opacity:1;}}
+  .symtab{font-family:var(--mono);font-size:11px;padding:6px 11px;border-radius:16px;
+    color:var(--ink-dim);cursor:pointer;border:1px solid var(--panel-border);background:#1a1610;}
+  .symtab.active{color:var(--gold);border-color:var(--gold);}
+  .details{padding:12px 15px 16px;border-top:1px solid var(--panel-border);}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin-top:9px;}
+  @media (min-width:420px){ .grid{grid-template-columns:repeat(3,1fr);} }
+  .stat{background:#1a1610;border-radius:8px;padding:9px 10px;}
+  .stat .k{font-size:9.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:0.5px;}
+  .stat .v{font-family:var(--mono);font-size:14.5px;margin-top:3px;}
+  .stat.buy .v{color:var(--buy);} .stat.sell .v{color:var(--sell);}
+  .reason{font-size:12px;color:var(--ink-dim);margin-top:7px;font-style:italic;line-height:1.5;}
+  .caution{margin-top:10px;padding:9px 11px;background:rgba(232,182,73,0.1);border:1px solid rgba(232,182,73,0.35);
+    border-radius:8px;font-size:11.5px;color:var(--gold);line-height:1.5;}
+  .section-title{font-size:13px;font-weight:650;margin:0 0 8px;display:flex;align-items:center;gap:6px;justify-content:space-between;}
+  .section-title .mark{color:var(--gold);font-family:var(--mono);font-size:11px;}
+  .event-row{padding:9px 0;border-top:1px solid var(--panel-border);font-size:12px;}
+  .event-row:first-child{border-top:none;}
+  .event-header{display:flex;justify-content:space-between;gap:10px;}
+  .event-time{font-family:var(--mono);color:var(--ink-dim);font-size:11px;white-space:nowrap;}
+  .event-title{flex:1;}
+  .event-impact{font-family:var(--mono);font-size:9.5px;padding:2px 6px;border-radius:5px;text-transform:uppercase;height:fit-content;white-space:nowrap;}
+  .event-impact.High{background:rgba(224,86,47,0.18);color:var(--sell);}
+  .event-impact.Medium{background:rgba(232,182,73,0.15);color:var(--gold);}
+  .event-hint{font-size:10.5px;color:var(--ink-dim);margin-top:4px;line-height:1.4;}
+  .bt-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;}
+  @media (min-width:420px){ .bt-grid{grid-template-columns:repeat(4,1fr);} }
+  .trend-table{display:grid;grid-template-columns:repeat(2,1fr);gap:7px;}
+  @media (min-width:420px){ .trend-table{grid-template-columns:repeat(5,1fr);} }
+  .trend-cell{background:#1a1610;border-radius:8px;padding:8px 9px;text-align:center;}
+  .trend-cell .tl{font-size:9.5px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:0.5px;}
+  .trend-cell .tv{font-family:var(--mono);font-size:11.5px;margin-top:4px;font-weight:600;}
+  .trend-cell.bull .tv{color:var(--buy);} .trend-cell.bear .tv{color:var(--sell);} .trend-cell.neutral .tv{color:var(--ink-dim);}
+  .journal-row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--panel-border);font-size:11.5px;flex-wrap:wrap;}
+  .journal-row:first-child{border-top:none;}
+  .journal-sym{font-family:var(--mono);font-size:10px;color:var(--ink-dim);min-width:42px;}
+  .journal-dir{font-family:var(--mono);text-transform:uppercase;font-size:10px;padding:2px 7px;border-radius:5px;}
+  .journal-dir.buy{background:rgba(63,178,143,0.18);color:var(--buy);}
+  .journal-dir.sell{background:rgba(224,86,47,0.18);color:var(--sell);}
+  .journal-outcome{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:5px;}
+  .journal-outcome.win{background:rgba(63,178,143,0.18);color:var(--buy);}
+  .journal-outcome.loss{background:rgba(224,86,47,0.18);color:var(--sell);}
+  .journal-outcome.open{background:rgba(232,182,73,0.12);color:var(--gold);}
+  .footer-note{padding:16px 14px 0;color:var(--ink-dim);font-size:11px;line-height:1.6;font-family:var(--mono);}
+  .footer-note a{color:var(--gold);}
+  .setup-box{margin:12px; padding:15px; background:var(--panel); border:1px solid var(--gold);
+    border-radius:12px; font-size:12.5px; line-height:1.6;}
+  .setup-box input{width:100%; background:#1a1610; border:1px solid var(--panel-border); color:var(--ink);
+    padding:11px 10px; border-radius:8px; font-family:var(--mono); font-size:16px; margin:8px 0;}
+  .setup-box button{background:var(--gold); color:#1a1408; border:none; padding:10px 16px; border-radius:8px;
+    font-weight:650; cursor:pointer; font-size:13px; min-height:40px;}
+  .ghost-link{color:var(--gold);}
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="mark">◆ ZS</span><h1>Zone Signals</h1></div>
+  <div class="sub" id="updated">loading live data…</div>
+  <div class="sub" id="sessionBadge" style="margin-top:2px;"></div>
+  <div class="sub" id="dataHealth" style="margin-top:2px;font-family:var(--mono);font-size:11px;"></div>
+  <div class="topbar">
+    <button class="pill" id="notifyBtn">Enable alerts (app open)</button>
+    <button class="pill" id="refreshBtn">Refresh now</button>
+    <button class="pill" id="apiKeyBtn">⚙ API key</button>
+  </div>
+</header>
+
+<div id="apiKeyBox" class="setup-box" style="display:none;">
+  <b>Recommended: reliable price data for Gold &amp; Silver</b><br/>
+  Without a key, metals fall back to a free public relay that's proven
+  unreliable in practice. A free
+  <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a>
+  account (no card, 800 requests/day) fetches directly with no proxy
+  involved — sign up, copy your API key, paste it below.
+  <input id="apiKeyInput" placeholder="Twelve Data API key" autocapitalize="off" autocorrect="off" />
+  <div style="display:flex; gap:8px;">
+    <button id="saveApiKey">Save</button>
+    <button id="clearApiKey" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
+  </div>
+  <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--panel-border);">
+    <b>Optional 2nd fallback for metals: Finnhub</b><br/>
+    Used only if Twelve Data is missing or fails. Free
+    <a class="ghost-link" href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a>
+    account (no card, 60 calls/min) — direct API, not a proxy.
+    <input id="finnhubInput" placeholder="Finnhub API key" autocapitalize="off" autocorrect="off" />
+    <div style="display:flex; gap:8px;">
+      <button id="saveFinnhub">Save</button>
+      <button id="clearFinnhub" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
+    </div>
+  </div>
+</div>
+
+<main id="cards"></main>
+
+<div class="footer-note">
+  Technical signals computed live in your browser: Twelve Data or Finnhub if
+  you add a key, otherwise a public Yahoo Finance relay. Plus a shared US
+  Dollar Index (DXY) read and the ForexFactory economic calendar. No
+  account required, no broker connection, no server — everything runs on
+  this page. Not financial advice; verify any setup yourself and always
+  trade with a stop loss.<br/><br/>
+  All times shown are in <b>UAE time</b> (Asia/Dubai), regardless of your
+  device's own timezone setting.<br/><br/>
+  Each chart plots Entry/SL/TP1/TP2/TP3 directly on the 15m candles (dashed
+  while unconfirmed, solid once a signal fires). Signals require four
+  aligned timeframes — Daily sets the bias, 4H and 1H must agree, 15M
+  supplies the trigger candle — so expect fewer but better-supported
+  signals. Each read also checks for Smart Money Concepts (Fair Value Gaps,
+  Order Blocks, Break of Structure / Change of Character) and rolls
+  everything into a weighted 0-100 <b>confidence score</b> with a visible
+  breakdown of what's contributing to it, including an automatic penalty
+  when a major news release is imminent. The Trend / Size / Journal / News /
+  Backtest tools are grouped into one panel below — switch tabs instead of
+  scrolling through five separate cards.<br/><br/>
+  <b>No trade is risk-free.</b> The stop loss, position sizing, and journal
+  here exist to help you control and measure risk, not eliminate it.<br/><br/>
+  <b>Alerts only fire while this page is open and your screen is on.</b> A
+  closed app or locked phone can't receive push notifications without a
+  backend server watching the market on your behalf.<br/><br/>
+  Auto-refreshes every 5 minutes. Running both metals with a Twelve Data key
+  uses roughly twice the daily credits a single metal would — if you hit
+  the free daily limit, it automatically falls back to Finnhub, then Yahoo,
+  for the rest of the day.<br/><br/>
+  <b>If every card shows "data error" at once:</b> you're viewing this inside
+  a sandboxed preview (e.g. Claude's in-chat artifact panel) that blocks
+  outbound network requests. Open the file directly in Safari/Chrome instead.
+</div>
+
+<script>
+const SYMBOLS = [
+  { key: "GOLD",   label: "Gold · XAU/USD",   kind: "metal",  decimals: 2, yahoo: "GC=F", twelveData: "XAU/USD", finnhub: "OANDA:XAU_USD" },
+  { key: "SILVER", label: "Silver · XAG/USD", kind: "metal",  decimals: 3, yahoo: "SI=F", twelveData: "XAG/USD", finnhub: "OANDA:XAG_USD" },
+];
+const symbolByKey = k => SYMBOLS.find(s => s.key === k);
+
+const CORS_PROXY = "https://api.allorigins.win/raw?url=";
+const CORS_PROXY_2 = "https://corsproxy.io/?url=";
+const CORS_PROXY_3 = "https://api.codetabs.com/v1/proxy?quest=";
+const DISPLAY_TZ = "Asia/Dubai"; // UAE time, used for every timestamp shown in the app
+
+function fmtTimeUAE(date) { return date.toLocaleTimeString("en-GB", { timeZone: DISPLAY_TZ, hour: "2-digit", minute: "2-digit" }); }
+function fmtDateUAE(date) { return date.toLocaleDateString("en-GB", { timeZone: DISPLAY_TZ, weekday: "short", month: "short", day: "numeric" }); }
+function isSameDayUAE(a, b) {
+  const opts = { timeZone: DISPLAY_TZ, year: "numeric", month: "2-digit", day: "2-digit" };
+  return a.toLocaleDateString("en-GB", opts) === b.toLocaleDateString("en-GB", opts);
+}
+
+// Gold/silver volatility tracks the London/New York forex sessions far more
+// than the Asian session; crypto trades 24/7 but still tends to see more
+// action during Western trading hours too.
+function currentSession() {
+  const utcHour = new Date().getUTCHours();
+  if (utcHour >= 12 && utcHour < 16) return { label: "London/NY overlap", note: "highest-volatility window" };
+  if (utcHour >= 7 && utcHour < 12) return { label: "London session", note: "European hours, moderate volatility" };
+  if (utcHour >= 16 && utcHour < 21) return { label: "New York session", note: "US hours, moderate-high volatility" };
+  if (utcHour >= 0 && utcHour < 7) return { label: "Asian session", note: "typically quieter for metals/forex" };
+  return { label: "Session changeover", note: "thin liquidity, watch for spread widening" };
+}
+
+function getTwelveDataKey() { return localStorage.getItem("zs_td_key") || ""; }
+function getFinnhubKey() { return localStorage.getItem("zs_fh_key") || ""; }
+
+/* ---------------- price data fetch ---------------- */
+
+async function fetchTwelveData(symbol, interval, apiKey, outputsize = 150) {
+  const url = `https://api.twelvedata.com/time_series?symbol=${encodeURIComponent(symbol)}&interval=${interval}&outputsize=${outputsize}&timezone=UTC&apikey=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  const json = await res.json();
+  if (json.status === "error" || json.code >= 400) throw new Error(json.message || `Twelve Data ${res.status}`);
+  const values = json.values || [];
+  return values
+    .map(v => ({ time: Date.parse(v.datetime.replace(" ", "T") + "Z"), open: +v.open, high: +v.high, low: +v.low, close: +v.close, volume: +(v.volume || 0) }))
+    .sort((a, b) => a.time - b.time);
+}
+
+// Finnhub free tier (60 calls/min), direct API, no proxy. CORS behavior not
+// independently verified for this app -- wrapped defensively so a failure
+// (CORS included) just falls through to Yahoo rather than breaking anything.
+async function fetchFinnhub(finnhubSymbol, resolution, count, apiKey) {
+  const url = `https://finnhub.io/api/v1/forex/candle?symbol=${encodeURIComponent(finnhubSymbol)}&resolution=${resolution}&count=${count}&token=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Finnhub ${res.status}`);
+  const json = await res.json();
+  if (json.s !== "ok" || !Array.isArray(json.t)) throw new Error(json.s || "Finnhub returned no data");
+  return json.t.map((t, i) => ({ time: t * 1000, open: json.o[i], high: json.h[i], low: json.l[i], close: json.c[i], volume: json.v?.[i] || 0 }));
+}
+
+async function fetchYahoo(yahooSymbol, interval, range) {
+  const target = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?interval=${interval}&range=${range}`;
+  const proxies = [CORS_PROXY, CORS_PROXY_2, CORS_PROXY_3];
+  let lastErr;
+  for (const proxy of proxies) {
+    try {
+      const res = await fetch(proxy + encodeURIComponent(target));
+      if (!res.ok) throw new Error(`Yahoo relay ${res.status}`);
+      const json = await res.json();
+      const result = json?.chart?.result?.[0];
+      if (!result) throw new Error("No chart data");
+      const ts = result.timestamp || [];
+      const q = result.indicators.quote[0];
+      return ts.map((t, i) => ({ time: t * 1000, open: q.open[i], high: q.high[i], low: q.low[i], close: q.close[i], volume: q.volume[i] }))
+        .filter(c => c.open != null && c.high != null && c.low != null && c.close != null);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("Yahoo fetch failed");
+}
+
+// Binance's public market data endpoints are free, unauthenticated, and
+// CORS-enabled for anyone -- the most reliable source in this whole app.
+async function fetchBinance(binanceSymbol, interval, limit = 200) {
+  const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&limit=${limit}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Binance ${res.status}`);
+  const raw = await res.json();
+  return raw.map(k => ({ time: k[0], open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
+}
+
+function resampleToInterval(source, minutes) {
+  const bucketMs = minutes * 60 * 1000;
+  const buckets = new Map();
+  for (const c of source) {
+    const bt = Math.floor(c.time / bucketMs) * bucketMs;
+    if (!buckets.has(bt)) buckets.set(bt, { time: bt, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume || 0 });
+    else { const b = buckets.get(bt); b.high = Math.max(b.high, c.high); b.low = Math.min(b.low, c.low); b.close = c.close; b.volume += c.volume || 0; }
+  }
+  return Array.from(buckets.values()).sort((a, b) => a.time - b.time);
+}
+function resampleTo4h(hourly) { return resampleToInterval(hourly, 240); }
+function resampleToDaily(fourHourly) { return resampleToInterval(fourHourly, 1440); }
+
+// The 4h series doubles as the source for the Daily tier (resampled locally,
+// no extra fetch) -- so 4h needs enough history for a meaningful EMA50 on
+// Daily bars (50+ daily candles = 300+ 4h candles), more than plain 4h
+// signal logic alone would need.
+async function getCandlesFor(sym, tf, outputsize = 150) {
+  if (sym.kind === "crypto") {
+    const intervalMap = { "15m": "15m", "1h": "1h", "4h": "4h" };
+    const limit = tf === "4h" ? 500 : 200;
+    return fetchBinance(sym.binance, intervalMap[tf], limit);
+  }
+  const apiKey = getTwelveDataKey();
+  const effectiveOutputsize = tf === "4h" ? Math.max(outputsize, 500) : outputsize;
+  if (apiKey) {
+    const intervalMap = { "15m": "15min", "1h": "1h", "4h": "4h" };
+    try { return await fetchTwelveData(sym.twelveData, intervalMap[tf], apiKey, effectiveOutputsize); }
+    catch (err) { console.warn(`Twelve Data failed for ${sym.key} ${tf}, falling back:`, err.message); }
+  }
+  const fhKey = getFinnhubKey();
+  if (fhKey) {
+    try {
+      const resolutionMap = { "15m": "15", "1h": "60", "4h": "60" };
+      const count = tf === "4h" ? 2500 : 500;
+      const raw = await fetchFinnhub(sym.finnhub, resolutionMap[tf], count, fhKey);
+      return tf === "4h" ? resampleTo4h(raw) : raw;
+    } catch (err) {
+      console.warn(`Finnhub failed for ${sym.key} ${tf}, falling back to Yahoo:`, err.message);
+    }
+  }
+  if (tf === "15m") return fetchYahoo(sym.yahoo, "15m", "5d");
+  if (tf === "1h") return fetchYahoo(sym.yahoo, "60m", "1mo");
+  const hourly = await fetchYahoo(sym.yahoo, "60m", "6mo"); // 6mo instead of 3mo: more bars for Daily resampling
+  return resampleTo4h(hourly);
+}
+
+async function get1mCandlesFor(sym) {
+  if (sym.kind === "crypto") return fetchBinance(sym.binance, "1m");
+  const apiKey = getTwelveDataKey();
+  if (apiKey) {
+    try { return await fetchTwelveData(sym.twelveData, "1min", apiKey, 200); }
+    catch (err) { console.warn("Twelve Data 1min failed, falling back:", err.message); }
+  }
+  const fhKey = getFinnhubKey();
+  if (fhKey) {
+    try { return await fetchFinnhub(sym.finnhub, "1", 200, fhKey); }
+    catch (err) { console.warn("Finnhub 1min failed, falling back to Yahoo:", err.message); }
+  }
+  return fetchYahoo(sym.yahoo, "1m", "1d");
+}
+
+async function fetchLivePriceFor(sym) {
+  if (sym.kind === "crypto") {
+    try {
+      const res = await fetch(`https://api.binance.com/api/v3/ticker/price?symbol=${sym.binance}`);
+      const json = await res.json();
+      if (json.price) return +json.price;
+    } catch {}
+    return null;
+  }
+  const apiKey = getTwelveDataKey();
+  if (apiKey) {
+    try {
+      const res = await fetch(`https://api.twelvedata.com/price?symbol=${encodeURIComponent(sym.twelveData)}&apikey=${encodeURIComponent(apiKey)}`);
+      const json = await res.json();
+      if (json.price) return +json.price;
+    } catch {}
+  }
+  const fhKey = getFinnhubKey();
+  if (fhKey) {
+    try {
+      const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(sym.finnhub)}&token=${encodeURIComponent(fhKey)}`);
+      const json = await res.json();
+      if (json.c) return +json.c;
+    } catch {}
+  }
+  const target = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym.yahoo)}?interval=1m&range=1d`;
+  for (const proxy of [CORS_PROXY, CORS_PROXY_2, CORS_PROXY_3]) {
+    try {
+      const res = await fetch(proxy + encodeURIComponent(target));
+      const json = await res.json();
+      const meta = json?.chart?.result?.[0]?.meta;
+      if (meta?.regularMarketPrice != null) return meta.regularMarketPrice;
+    } catch {}
+  }
+  return null;
+}
+
+// DXY (US Dollar Index) always via Yahoo -- it's shared context for the
+// metals cards, not worth spending Twelve Data credits on.
+const DXY_YAHOO = "DX-Y.NYB";
+async function getDXYCandles(tf) {
+  if (tf === "1h") return fetchYahoo(DXY_YAHOO, "60m", "1mo");
+  const hourly = await fetchYahoo(DXY_YAHOO, "60m", "3mo");
+  return resampleTo4h(hourly);
+}
+
+/* ---------------- indicators ---------------- */
+
+function ema(values, period) {
+  const k = 2 / (period + 1);
+  const out = new Array(values.length).fill(null);
+  let prev = null;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] == null) continue;
+    if (prev == null) { if (i >= period - 1) { const s = values.slice(i - period + 1, i + 1); prev = s.reduce((a, b) => a + b, 0) / period; out[i] = prev; } }
+    else { prev = values[i] * k + prev * (1 - k); out[i] = prev; }
+  }
+  return out;
+}
+function rsi(closes, period = 14) {
+  const out = new Array(closes.length).fill(null);
+  let avgGain = 0, avgLoss = 0;
+  for (let i = 1; i < closes.length; i++) {
+    const ch = closes[i] - closes[i - 1], gain = Math.max(ch, 0), loss = Math.max(-ch, 0);
+    if (i <= period) { avgGain += gain / period; avgLoss += loss / period; if (i === period) out[i] = 100 - 100 / (1 + (avgLoss === 0 ? 100 : avgGain / avgLoss)); }
+    else { avgGain = (avgGain * (period - 1) + gain) / period; avgLoss = (avgLoss * (period - 1) + loss) / period; const rs = avgLoss === 0 ? 100 : avgGain / avgLoss; out[i] = 100 - 100 / (1 + rs); }
+  }
+  return out;
+}
+function atr(candles, period = 14) {
+  const trs = candles.map((c, i) => i === 0 ? c.high - c.low : Math.max(c.high - c.low, Math.abs(c.high - candles[i-1].close), Math.abs(c.low - candles[i-1].close)));
+  return ema(trs, period);
+}
+function findSwings(candles, lookback = 2) {
+  const highs = [], lows = [];
+  for (let i = lookback; i < candles.length - lookback; i++) {
+    const w = candles.slice(i - lookback, i + lookback + 1);
+    if (w.every(c => c.high <= candles[i].high)) highs.push({ index: i, price: candles[i].high, time: candles[i].time });
+    if (w.every(c => c.low >= candles[i].low)) lows.push({ index: i, price: candles[i].low, time: candles[i].time });
+  }
+  return { swingHighs: highs, swingLows: lows };
+}
+function detectPattern(candles, idx) {
+  const c = candles[idx], prev = candles[idx - 1];
+  if (!c || !prev) return null;
+  const body = Math.abs(c.close - c.open), range = c.high - c.low || 1e-9;
+  const upperWick = c.high - Math.max(c.open, c.close), lowerWick = Math.min(c.open, c.close) - c.low, prevBody = Math.abs(prev.close - prev.open);
+  const bullEng = prev.close < prev.open && c.close > c.open && c.close >= prev.open && c.open <= prev.close && body > prevBody;
+  const bearEng = prev.close > prev.open && c.close < c.open && c.close <= prev.open && c.open >= prev.close && body > prevBody;
+  const bullPin = lowerWick > body * 2 && lowerWick > range * 0.55 && upperWick < body * 1.2;
+  const bearPin = upperWick > body * 2 && upperWick > range * 0.55 && lowerWick < body * 1.2;
+  if (bullEng) return { type: "bullish_engulfing", bias: "buy" };
+  if (bearEng) return { type: "bearish_engulfing", bias: "sell" };
+  if (bullPin) return { type: "bullish_pin_bar", bias: "buy" };
+  if (bearPin) return { type: "bearish_pin_bar", bias: "sell" };
+  return null;
+}
+function computeAll(candles) {
+  const closes = candles.map(c => c.close);
+  return { ema20: ema(closes, 20), ema50: ema(closes, 50), rsi14: rsi(closes, 14), atr14: atr(candles, 14), ...findSwings(candles) };
+}
+function efficiencyRatio(closes, i, period = 20) {
+  if (i < period) return null;
+  const net = Math.abs(closes[i] - closes[i - period]);
+  let sumMoves = 0;
+  for (let k = i - period + 1; k <= i; k++) sumMoves += Math.abs(closes[k] - closes[k - 1]);
+  return sumMoves > 0 ? net / sumMoves : 0;
+}
+
+/* ---------------- Smart Money Concepts ---------------- */
+
+// Fair Value Gap: a 3-candle imbalance left by an impulsive middle candle --
+// the outer candles' ranges don't overlap, leaving a "gap" price often
+// returns to fill before continuing.
+function detectFVG(candles, i) {
+  if (i < 2) return null;
+  const c0 = candles[i - 2], c2 = candles[i];
+  if (c0.high < c2.low) return { type: "bullish_fvg", top: c2.low, bottom: c0.high };
+  if (c0.low > c2.high) return { type: "bearish_fvg", top: c0.low, bottom: c2.high };
+  return null;
+}
+
+// Order Block: the last opposite-colored candle right before a strong
+// impulsive move -- read as the footprint of institutional positioning.
+function detectOrderBlock(candles, i) {
+  if (i < 6) return null;
+  const bodies = candles.slice(i - 5, i).map(c => Math.abs(c.close - c.open));
+  const avgBody = bodies.reduce((a, b) => a + b, 0) / bodies.length;
+  const impulse = candles[i];
+  const impulseBody = Math.abs(impulse.close - impulse.open);
+  if (impulseBody < avgBody * 1.6) return null;
+  const prev = candles[i - 1];
+  if (impulse.close > impulse.open && prev.close < prev.open) return { type: "bullish_ob", top: prev.high, bottom: prev.low, index: i - 1 };
+  if (impulse.close < impulse.open && prev.close > prev.open) return { type: "bearish_ob", top: prev.low, bottom: prev.high, index: i - 1 };
+  return null;
+}
+
+// BOS (Break of Structure) = price breaks a swing point in the direction of
+// the prevailing trend -- continuation. CHOCH (Change of Character) = price
+// breaks a swing point against the prevailing trend -- early reversal
+// warning. Same break, different label, depending on the trend it's set against.
+function detectStructureBreak(candles, i, swingHighs, swingLows, prevailingBias) {
+  const priorHighs = swingHighs.filter(s => s.index < i - 1);
+  const priorLows = swingLows.filter(s => s.index < i - 1);
+  const lastHigh = priorHighs[priorHighs.length - 1];
+  const lastLow = priorLows[priorLows.length - 1];
+  const brokeUp = lastHigh && candles[i].close > lastHigh.price;
+  const brokeDown = lastLow && candles[i].close < lastLow.price;
+  if (brokeUp && !brokeDown) return { direction: "bullish", kind: prevailingBias === "bearish" ? "CHOCH" : "BOS", level: lastHigh.price };
+  if (brokeDown && !brokeUp) return { direction: "bearish", kind: prevailingBias === "bullish" ? "CHOCH" : "BOS", level: lastLow.price };
+  return null;
+}
+
+// Scans back a short window for the nearest FVG/Order Block so a signal a
+// few candles after the actual imbalance still gets credited with it.
+function findRecentSMC(candles, ind, i, bias, lookback = 6) {
+  for (let k = i; k >= Math.max(2, i - lookback); k--) {
+    const fvg = detectFVG(candles, k);
+    const ob = detectOrderBlock(candles, k);
+    const structure = detectStructureBreak(candles, k, ind.swingHighs, ind.swingLows, bias);
+    if (fvg || ob || structure) return { fvg, orderBlock: ob, structure, atIndex: k };
+  }
+  return { fvg: null, orderBlock: null, structure: null, atIndex: null };
+}
+
+/* ---------------- signal engine (shared by live view + backtest) ---------------- */
+
+function biasAt(ind, i) {
+  const e20 = ind.ema20[i], e50 = ind.ema50[i], r = ind.rsi14[i];
+  if (e20 == null || e50 == null || r == null) return "neutral";
+  if (e20 > e50 && r > 45) return "bullish";
+  if (e20 < e50 && r < 55) return "bearish";
+  return "neutral";
+}
+function zoneAt(candles, ind, i, direction) {
+  const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 1.5;
+  const levels = [];
+  if (e50 != null) levels.push(e50);
+  const relevant = (direction === "buy" ? ind.swingLows : ind.swingHighs).filter(s => s.index <= i - 2).slice(-8);
+  relevant.forEach(s => levels.push(s.price));
+  const nearLevel = levels.find(lvl => Math.abs(price - lvl) <= proximity);
+  return { inZone: !!nearLevel, level: nearLevel, atrNow };
+}
+function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoIndex) {
+  const atrNow = atrRaw || entry * 0.003;
+  const relevantSwings = (direction === "buy" ? swingLows : swingHighs).filter(s => uptoIndex == null || s.index <= uptoIndex - 2);
+  const nearestStructure = relevantSwings.length ? relevantSwings[relevantSwings.length - 1].price : null;
+  let stopLoss;
+  if (direction === "buy") { const s = nearestStructure != null ? nearestStructure - atrNow * 0.3 : entry - atrNow * 1.5; stopLoss = Math.min(s, entry - atrNow * 1.2); }
+  else { const s = nearestStructure != null ? nearestStructure + atrNow * 0.3 : entry + atrNow * 1.5; stopLoss = Math.max(s, entry + atrNow * 1.2); }
+  const risk = Math.abs(entry - stopLoss);
+  const tp1 = direction === "buy" ? entry + risk * 1.5 : entry - risk * 1.5;
+  const tp2 = direction === "buy" ? entry + risk * 3 : entry - risk * 3;
+  const tp3 = direction === "buy" ? entry + risk * 4.5 : entry - risk * 4.5;
+  return { stopLoss, tp1, tp2, tp3, risk };
+}
+function biasOnly(candles) {
+  if (!candles || candles.length < 10) return "neutral";
+  const closes = candles.map(c => c.close);
+  const ind = { ema20: ema(closes, 20), ema50: ema(closes, 50), rsi14: rsi(closes, 14) };
+  return biasAt(ind, candles.length - 2);
+}
+function buildTrendTable(m1, m15, h1, h4) {
+  return [
+    { label: "1 min", bias: biasOnly(m1) },
+    { label: "3 min", bias: biasOnly(resampleToInterval(m1, 3)) },
+    { label: "5 min", bias: biasOnly(resampleToInterval(m1, 5)) },
+    { label: "15 min", bias: biasOnly(m15) },
+    { label: "30 min", bias: biasOnly(resampleToInterval(m15, 30)) },
+    { label: "1H", bias: biasOnly(h1) },
+    { label: "2H", bias: biasOnly(resampleToInterval(h1, 120)) },
+    { label: "4H", bias: biasOnly(h4) },
+    { label: "8H", bias: biasOnly(resampleToInterval(h4, 480)) },
+    { label: "Daily", bias: biasOnly(resampleToInterval(h4, 1440)) },
+  ];
+}
+
+function analyzeTimeframe(candles) {
+  if (!candles || candles.length < 60) return { bias: "neutral", zone: null, pattern: null, atrNow: null, lastClose: null, smc: null };
+  const ind = computeAll(candles), i = candles.length - 2, bias = biasAt(ind, i), pattern = detectPattern(candles, i);
+  const want = bias === "bullish" ? "buy" : bias === "bearish" ? "sell" : null;
+  let zone = null;
+  if (want) { const z = zoneAt(candles, ind, i, want); if (z.inZone) zone = { direction: want, level: z.level, atrNow: z.atrNow }; }
+  const er = efficiencyRatio(candles.map(c => c.close), i, 20);
+  const smc = findRecentSMC(candles, ind, i, bias);
+  return { bias, zone, pattern, atrNow: ind.atr14[i], lastClose: candles[i].close, swingHighs: ind.swingHighs, swingLows: ind.swingLows, candleTime: candles[i].time, ema20: ind.ema20[i], ema50: ind.ema50[i], rsi14: ind.rsi14[i], efficiencyRatio: er, smc };
+}
+
+// Does the detected SMC context at this timeframe support the given trade direction?
+function smcSupports(smc, direction) {
+  if (!smc) return false;
+  if (smc.fvg && ((direction === "buy" && smc.fvg.type === "bullish_fvg") || (direction === "sell" && smc.fvg.type === "bearish_fvg"))) return true;
+  if (smc.orderBlock && ((direction === "buy" && smc.orderBlock.type === "bullish_ob") || (direction === "sell" && smc.orderBlock.type === "bearish_ob"))) return true;
+  if (smc.structure && ((direction === "buy" && smc.structure.direction === "bullish") || (direction === "sell" && smc.structure.direction === "bearish"))) return true;
+  return false;
+}
+
+// Four-tier confluence: Daily sets the bias, 4H must agree, 1H must agree
+// and be sitting in a zone, 15M supplies the entry trigger candle. Stricter
+// than the old 3-tier chain -- fewer signals, each one better supported.
+function buildSignal(tfReads) {
+  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
+  if (!daily.bias || daily.bias === "neutral") return { status: "watching", reason: "Daily has no clear trend right now — no bias to trade either direction" };
+  const direction = daily.bias === "bullish" ? "buy" : "sell";
+  const h4Aligned = h4.bias === daily.bias;
+  const h1Aligned = h4Aligned && h1.bias === daily.bias && h1.zone && h1.zone.direction === direction;
+  const m15Confirms = h1Aligned && m15.pattern && m15.pattern.bias === direction;
+  const entryNow = m15.lastClose;
+  const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
+
+  if (!h4Aligned || !h1Aligned || !m15Confirms) {
+    const reason = !h4Aligned ? "4H not yet aligned with Daily"
+      : !h1Aligned ? "1H not yet aligned / price not in a zone"
+      : "1H is aligned — waiting for a 15m candle to confirm entry";
+    return { status: "watching", direction, preview, reason, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
+  }
+  const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: 1.5, riskRewardTp2: 3, riskRewardTp3: 4.5, pattern: m15.pattern.type, zoneLevel: h1.zone.level, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern.type }, candleTime: m15.candleTime, smc: m15.smc };
+}
+
+// Weighted 0-100 confidence score. Timeframe alignment carries the most
+// weight since it's the backbone of the confluence chain; everything else
+// rewards extra confirming factors, and news proximity only ever subtracts.
+function computeConfidence(tfReads, direction, newsSoon) {
+  if (!direction) return null;
+  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
+  const wantBias = direction === "buy" ? "bullish" : "bearish";
+  const checks = [];
+  let score = 0;
+
+  const tfMatches = [daily.bias, h4.bias, h1.bias].filter(b => b === wantBias).length;
+  const trendPts = (tfMatches / 3) * 35;
+  score += trendPts;
+  checks.push({ label: `Timeframe alignment (${tfMatches}/3: Daily, 4H, 1H)`, pass: tfMatches === 3, points: Math.round(trendPts) });
+
+  const rsi15 = m15.rsi14;
+  let momentumPts = 0;
+  if (rsi15 != null) {
+    const sweetSpot = direction === "buy" ? (rsi15 >= 45 && rsi15 <= 68) : (rsi15 <= 55 && rsi15 >= 32);
+    momentumPts = sweetSpot ? 20 : 8;
+  }
+  score += momentumPts;
+  checks.push({ label: "RSI in a healthy range (not overextended)", pass: momentumPts >= 20, points: momentumPts });
+
+  const inZone = !!(h1.zone && h1.zone.direction === direction);
+  const zonePts = inZone ? 15 : 4;
+  score += zonePts;
+  checks.push({ label: "Price at a support/resistance zone", pass: inZone, points: zonePts });
+
+  const smcAligned = smcSupports(m15.smc, direction) || smcSupports(h1.smc, direction);
+  const smcPts = smcAligned ? 15 : 5;
+  score += smcPts;
+  checks.push({ label: "Smart Money confluence (FVG / Order Block / BOS)", pass: smcAligned, points: smcPts });
+
+  const er = h1.efficiencyRatio;
+  let erPts = 0;
+  if (er != null) erPts = Math.max(0, Math.min(15, er * 15 / 0.5));
+  score += erPts;
+  checks.push({ label: "1H trend is clean, not choppy", pass: er != null && er >= 0.3, points: Math.round(erPts) });
+
+  let newsPenalty = 0;
+  if (newsSoon) { newsPenalty = 15; score -= newsPenalty; }
+  checks.push({ label: "No major news event imminent", pass: !newsSoon, points: newsSoon ? -newsPenalty : 0 });
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  return { score, checks };
+}
+
+function dxyConfluence(goldDirection, dxyH4Bias, dxyH1Bias) {
+  if (!goldDirection || dxyH4Bias === "neutral") return null;
+  const wantsDXY = goldDirection === "buy" ? "bearish" : "bullish";
+  const agrees = dxyH4Bias === wantsDXY;
+  return { agrees, dxyH4Bias, dxyH1Bias };
+}
+
+/* ---------------- backtest ---------------- */
+
+function runBacktest(candles15, candles1h, candles4h) {
+  if (candles15.length < 80 || candles1h.length < 60 || candles4h.length < 60) {
+    return { error: "Not enough history fetched yet to backtest." };
+  }
+  const candlesDaily = resampleToDaily(candles4h);
+  if (candlesDaily.length < 60) {
+    return { error: "Not enough 4H history fetched yet to derive a reliable Daily trend for backtesting." };
+  }
+  const ind15 = computeAll(candles15), ind1h = computeAll(candles1h), ind4h = computeAll(candles4h), indDaily = computeAll(candlesDaily);
+  let p1 = 0, p4 = 0, pd = 0;
+  const ONE_DAY = 24 * 3600000;
+  const trades = [];
+  for (let i = 60; i < candles15.length - 1; i++) {
+    const t = candles15[i].time;
+    while (p1 + 1 < candles1h.length && candles1h[p1 + 1].time + 3600000 <= t) p1++;
+    while (p4 + 1 < candles4h.length && candles4h[p4 + 1].time + 4 * 3600000 <= t) p4++;
+    while (pd + 1 < candlesDaily.length && candlesDaily[pd + 1].time + ONE_DAY <= t) pd++;
+    if (p1 < 60 || p4 < 60 || pd < 60) continue;
+    const dailyBias = biasAt(indDaily, pd);
+    if (dailyBias === "neutral") continue;
+    const direction = dailyBias === "bullish" ? "buy" : "sell";
+    const h4Bias = biasAt(ind4h, p4);
+    if (h4Bias !== dailyBias) continue;
+    const h1Bias = biasAt(ind1h, p1);
+    if (h1Bias !== dailyBias) continue;
+    const h1Zone = zoneAt(candles1h, ind1h, p1, direction);
+    if (!h1Zone.inZone) continue;
+    const pattern = detectPattern(candles15, i);
+    if (!pattern || pattern.bias !== direction) continue;
+    const entry = candles15[i].close;
+    const { stopLoss, tp1 } = computeLevels(direction, entry, ind15.atr14[i], ind15.swingLows, ind15.swingHighs, i);
+    let outcome = "timeout";
+    for (let j = i + 1; j < Math.min(i + 100, candles15.length); j++) {
+      const c = candles15[j];
+      if (direction === "buy") {
+        if (c.low <= stopLoss) { outcome = "loss"; break; }
+        if (c.high >= tp1) { outcome = "win"; break; }
+      } else {
+        if (c.high >= stopLoss) { outcome = "loss"; break; }
+        if (c.low <= tp1) { outcome = "win"; break; }
+      }
+    }
+    trades.push({ time: t, direction, outcome });
+    i += 4;
+  }
+  const decided = trades.filter(t => t.outcome !== "timeout");
+  const wins = decided.filter(t => t.outcome === "win").length;
+  const losses = decided.filter(t => t.outcome === "loss").length;
+  const winRate = decided.length ? (wins / decided.length) * 100 : null;
+  const avgR = decided.length ? (wins * 1.5 - losses * 1) / decided.length : null;
+  const from = candles15[60]?.time, to = candles15[candles15.length - 1]?.time;
+  return { totalSignals: trades.length, decided: decided.length, wins, losses, winRate, avgR, from, to };
+}
+
+/* ---------------- ForexFactory economic calendar ---------------- */
+
+async function fetchJSON(url) {
+  const attempts = [
+    () => fetch(url),
+    () => fetch(CORS_PROXY + encodeURIComponent(url)),
+    () => fetch(CORS_PROXY_2 + encodeURIComponent(url)),
+    () => fetch(CORS_PROXY_3 + encodeURIComponent(url)),
+  ];
+  let lastErr;
+  for (const attempt of attempts) {
+    try {
+      const res = await attempt();
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return await res.json();
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr || new Error("fetch failed");
+}
+
+const CALENDAR_CACHE_KEY = "zs_calendar_cache";
+const CALENDAR_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+function loadCachedCalendarRaw() {
+  try {
+    const cached = JSON.parse(localStorage.getItem(CALENDAR_CACHE_KEY));
+    if (cached && Date.now() - cached.fetchedAt < CALENDAR_CACHE_MAX_AGE_MS) return cached.events;
+  } catch {}
+  return null;
+}
+function saveCachedCalendarRaw(events) {
+  try { localStorage.setItem(CALENDAR_CACHE_KEY, JSON.stringify({ fetchedAt: Date.now(), events })); } catch {}
+}
+
+async function fetchCalendarRaw() {
+  const cached = loadCachedCalendarRaw();
+  if (cached) return cached;
+  const [thisWeek, nextWeek] = await Promise.all([
+    fetchJSON("https://nfs.faireconomy.media/ff_calendar_thisweek.json").catch(err => { console.warn("calendar thisweek failed:", err.message); return []; }),
+    fetchJSON("https://nfs.faireconomy.media/ff_calendar_nextweek.json").catch(err => { console.warn("calendar nextweek failed:", err.message); return []; }),
+  ]);
+  const all = [...(thisWeek || []), ...(nextWeek || [])];
+  if (all.length) saveCachedCalendarRaw(all);
+  return all;
+}
+
+async function fetchCalendar() {
+  try {
+    const all = await fetchCalendarRaw();
+    if (!all.length) return { events: [], caution: null, error: "no data from any source right now" };
+    const now = Date.now();
+    const relevant = all
+      .map(e => ({ ...e, ts: Date.parse(e.date) }))
+      .filter(e => !isNaN(e.ts))
+      .filter(e => e.impact === "High" || (e.impact === "Medium" && e.country === "USD"))
+      .filter(e => ["USD", "XAU"].includes(e.country) || e.impact === "High");
+    const upcoming = relevant.filter(e => e.ts >= now).sort((a, b) => a.ts - b.ts).slice(0, 8);
+    const soonHighImpactUSD = relevant.find(e => e.impact === "High" && e.country === "USD" && e.ts - now < 2 * 60 * 60 * 1000 && e.ts - now > -30 * 60 * 1000);
+    return { events: upcoming, caution: soonHighImpactUSD || null };
+  } catch (err) {
+    return { events: [], caution: null, error: err.message };
+  }
+}
+
+// Applies to gold and silver, both largely USD-driven.
+function marketImpactHint(event) {
+  const title = event.title.toLowerCase();
+  const isUSD = event.country === "USD";
+  if (!isUSD) return "Indirect — mainly affects broader risk sentiment / USD cross-rates rather than these assets directly.";
+  if (/rate|fomc|monetary policy|press conference/.test(title)) return "Hawkish tone or a rate hike → typically bearish for gold/silver, often risk-off for crypto too. Dovish/rate cut → typically the opposite.";
+  if (/cpi|ppi|pce|inflation/.test(title)) return "Hotter than forecast → often bearish for metals (raises rate-hike odds). Cooler than forecast → often supportive.";
+  if (/nonfarm|payroll|employment|unemployment|jobless|claims|adp/.test(title)) return "Stronger than forecast → often bearish for metals (USD/yields firm up). Weaker than forecast → often supportive.";
+  if (/gdp/.test(title)) return "Stronger growth → often bearish for metals. Weaker growth → often supportive (safe-haven demand).";
+  if (/pmi|retail sales|confidence/.test(title)) return "Beats forecast → mildly bearish for metals (USD firms). Misses forecast → mildly supportive.";
+  return "Stronger-than-forecast USD data usually pressures metals down; weaker-than-forecast data usually supports them.";
+}
+
+function fmtEventTime(ts) {
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay = isSameDayUAE(d, now);
+  const datePart = sameDay ? "today" : fmtDateUAE(d);
+  return `${datePart} ${fmtTimeUAE(d)} UAE`;
+}
+
+/* ---------------- UI state ---------------- */
+
+const symbolState = {}; // key -> { canvas, activeTf, data }
+SYMBOLS.forEach(s => { symbolState[s.key] = { canvas: null, activeTf: "15m", data: null }; });
+let alertsEnabled = false;
+const notifiedSignatures = new Set();
+let trendTableSymbol = "GOLD", sizingSymbol = "GOLD", backtestSymbol = "GOLD";
+
+function fmt(n, decimals = 2) { if (n == null || isNaN(n)) return "—"; return Number(n).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }); }
+function tfChipClass(bias) { if (bias === "bullish") return "tf-chip bull"; if (bias === "bearish") return "tf-chip bear"; return "tf-chip"; }
+
+let activeToolPanel = "trend";
+
+function renderShell() {
+  const assetGrid = document.createElement("div");
+  assetGrid.className = "asset-grid";
+  document.getElementById("cards").appendChild(assetGrid);
+
+  SYMBOLS.forEach(sym => {
+    const card = document.createElement("div");
+    card.className = "card"; card.id = `card-${sym.key}`;
+    card.innerHTML = `
+      <div class="card-head">
+        <div><div class="asset-name">${sym.label}</div><div class="asset-price"><span id="priceValue-${sym.key}">—</span> <span id="liveDot-${sym.key}" class="live-dot" title="Live 15m candle updates"></span></div></div>
+        <div class="status-badge watching" id="status-${sym.key}">loading</div>
+      </div>
+      <div class="tf-row" id="tfrow-${sym.key}"></div>
+      <div class="tabs" id="tabs-${sym.key}">
+        <div class="tab active" data-tf="15m">15m</div><div class="tab" data-tf="1h">1h</div><div class="tab" data-tf="4h">4h</div>
+      </div>
+      <canvas class="chart" id="chart-${sym.key}"></canvas>
+      <div class="details" id="details-${sym.key}"></div>
+    `;
+    assetGrid.appendChild(card);
+    symbolState[sym.key].canvas = document.getElementById(`chart-${sym.key}`);
+
+    document.getElementById(`tabs-${sym.key}`).addEventListener("click", e => {
+      const tab = e.target.closest(".tab"); if (!tab) return;
+      document.querySelectorAll(`#tabs-${sym.key} .tab`).forEach(t => t.classList.remove("active"));
+      tab.classList.add("active"); symbolState[sym.key].activeTf = tab.dataset.tf;
+      paintChart(sym.key);
+    });
+  });
+  window.addEventListener("resize", () => SYMBOLS.forEach(s => paintChart(s.key)));
+
+  // One consolidated "Tools" card: Trend / Size / Journal / News / Backtest
+  // as tabs instead of five separate cards stacked down the page.
+  const toolsCard = document.createElement("div");
+  toolsCard.className = "card"; toolsCard.id = "card-tools";
+  toolsCard.innerHTML = `
+    <div class="tool-tabs" id="toolTabs">
+      <div class="tool-tab active" data-panel="trend">Trend</div>
+      <div class="tool-tab" data-panel="sizing">Size</div>
+      <div class="tool-tab" data-panel="journal">Journal</div>
+      <div class="tool-tab" data-panel="calendar">News</div>
+      <div class="tool-tab" data-panel="backtest">Backtest</div>
+    </div>
+
+    <div class="details tool-panel" id="panel-trend" style="border-top:none;">
+      <div class="symtabs" id="trendSymTabs" style="padding-top:0;"></div>
+      <div id="trendTableBody" class="trend-table" style="margin-top:10px;"><div class="reason">loading…</div></div>
+    </div>
+
+    <div class="details tool-panel" id="panel-sizing" style="border-top:none; display:none;">
+      <div class="symtabs" id="sizingSymTabs" style="padding-top:0;"></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr; margin-top:10px;">
+        <div class="stat">
+          <div class="k">Account balance (USD)</div>
+          <input id="acctBalance" type="number" inputmode="decimal" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
+        </div>
+        <div class="stat">
+          <div class="k">Risk per trade (%)</div>
+          <input id="riskPercent" type="number" inputmode="decimal" step="0.1" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
+        </div>
+      </div>
+      <div id="sizingResult" class="reason" style="margin-top:10px;">Waiting for a signal or preview to size against…</div>
+    </div>
+
+    <div class="details tool-panel" id="panel-journal" style="border-top:none; display:none;">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:8px;">
+        <button class="pill small" id="clearJournalBtn">Clear</button>
+      </div>
+      <div id="journalBody"></div>
+    </div>
+
+    <div class="details tool-panel" id="panel-calendar" style="border-top:none; display:none;">
+      <div id="calendarBody"><div class="reason">loading…</div></div>
+    </div>
+
+    <div class="details tool-panel" id="panel-backtest" style="border-top:none; display:none;">
+      <div class="symtabs" id="backtestSymTabs" style="padding-top:0;"></div>
+      <div class="topbar" style="margin-top:10px;"><button class="pill" id="backtestBtn">Run backtest</button></div>
+      <div id="backtestBody" style="margin-top:10px;"></div>
+    </div>
+  `;
+  document.getElementById("cards").appendChild(toolsCard);
+
+  document.getElementById("toolTabs").addEventListener("click", e => {
+    const tab = e.target.closest(".tool-tab"); if (!tab) return;
+    activeToolPanel = tab.dataset.panel;
+    document.querySelectorAll("#toolTabs .tool-tab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    document.querySelectorAll(".tool-panel").forEach(p => p.style.display = "none");
+    document.getElementById(`panel-${activeToolPanel}`).style.display = "block";
+  });
+
+  document.getElementById("trendSymTabs").innerHTML = SYMBOLS.map(s => `<div class="symtab ${s.key === trendTableSymbol ? "active" : ""}" data-sym="${s.key}">${s.label.split(" ")[0]}</div>`).join("");
+  document.getElementById("trendSymTabs").addEventListener("click", e => {
+    const tab = e.target.closest(".symtab"); if (!tab) return;
+    trendTableSymbol = tab.dataset.sym;
+    document.querySelectorAll("#trendSymTabs .symtab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    refreshTrendTable();
+  });
+
+  document.getElementById("sizingSymTabs").innerHTML = SYMBOLS.map(s => `<div class="symtab ${s.key === sizingSymbol ? "active" : ""}" data-sym="${s.key}">${s.label.split(" ")[0]}</div>`).join("");
+  document.getElementById("sizingSymTabs").addEventListener("click", e => {
+    const tab = e.target.closest(".symtab"); if (!tab) return;
+    sizingSymbol = tab.dataset.sym;
+    document.querySelectorAll("#sizingSymTabs .symtab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    renderPositionSizing();
+  });
+  const acctInput = document.getElementById("acctBalance"), riskInput = document.getElementById("riskPercent");
+  acctInput.value = localStorage.getItem("zs_acct_balance") || "1000";
+  riskInput.value = localStorage.getItem("zs_risk_percent") || "1";
+  acctInput.addEventListener("input", () => { localStorage.setItem("zs_acct_balance", acctInput.value); renderPositionSizing(); });
+  riskInput.addEventListener("input", () => { localStorage.setItem("zs_risk_percent", riskInput.value); renderPositionSizing(); });
+
+  document.getElementById("clearJournalBtn").addEventListener("click", () => {
+    if (confirm("Clear all logged trades? This can't be undone.")) { saveJournal([]); renderJournal(); }
+  });
+
+  document.getElementById("backtestSymTabs").innerHTML = SYMBOLS.map(s => `<div class="symtab ${s.key === backtestSymbol ? "active" : ""}" data-sym="${s.key}">${s.label.split(" ")[0]}</div>`).join("");
+  document.getElementById("backtestSymTabs").addEventListener("click", e => {
+    const tab = e.target.closest(".symtab"); if (!tab) return;
+    backtestSymbol = tab.dataset.sym;
+    document.querySelectorAll("#backtestSymTabs .symtab").forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById("backtestBody").innerHTML = "";
+  });
+}
+
+/* ---------------- chart rendering ---------------- */
+
+function paintChart(symKey) {
+  const st = symbolState[symKey];
+  if (!st.data) return;
+  const tf = st.activeTf, candles = (st.data.candles[tf] || []).slice(-80);
+  const read = st.data.tfReads[tf];
+  const levels = tf === "15m" ? levelsFromSignal(st.data.signal) : null;
+  drawCandlesticks(st.canvas, candles, read?.zone || null, symbolByKey(symKey).decimals, levels);
+}
+
+function levelsFromSignal(signal) {
+  if (!signal) return null;
+  if (signal.status === "signal") {
+    return { entry: signal.entry, stopLoss: signal.stopLoss, tp1: signal.tp1, tp2: signal.tp2, tp3: signal.tp3, direction: signal.direction, confirmed: true, candleTime: signal.candleTime };
+  }
+  if (signal.preview) {
+    return { entry: null, stopLoss: signal.preview.stopLoss, tp1: signal.preview.tp1, tp2: signal.preview.tp2, tp3: signal.preview.tp3, direction: signal.direction, confirmed: false, candleTime: null };
+  }
+  return null;
+}
+
+async function liveTick() {
+  for (const sym of SYMBOLS) {
+    const st = symbolState[sym.key];
+    const dot = document.getElementById(`liveDot-${sym.key}`);
+    if (!st.data || !st.data.candles?.["15m"]?.length) continue;
+    const price = await fetchLivePriceFor(sym);
+    if (price == null) { dot?.classList.add("stale"); continue; }
+    dot?.classList.remove("stale");
+    const candles15 = st.data.candles["15m"];
+    const last = candles15[candles15.length - 1];
+    const FIFTEEN_MIN = 15 * 60 * 1000;
+    if (Date.now() - last.time <= FIFTEEN_MIN + 60000) {
+      last.close = price;
+      last.high = Math.max(last.high, price);
+      last.low = Math.min(last.low, price);
+    }
+    const priceEl = document.getElementById(`priceValue-${sym.key}`);
+    if (priceEl) priceEl.textContent = fmt(price, sym.decimals);
+    if (st.activeTf === "15m") paintChart(sym.key);
+  }
+}
+
+function drawCandlesticks(canvas, candles, zone, decimals, levels) {
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth || canvas.parentElement.clientWidth || 320;
+  const cssH = canvas.clientHeight || 220;
+  canvas.width = cssW * dpr; canvas.height = cssH * dpr;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  if (!candles.length) { ctx.fillStyle = "#a89e88"; ctx.font = "11px monospace"; ctx.fillText("waiting for data…", 10, cssH / 2); return; }
+
+  const rightLabelW = 62, topPad = 8, bottomPad = 8;
+  const plotW = cssW - rightLabelW, plotH = cssH - topPad - bottomPad;
+
+  let lo = Math.min(...candles.map(c => c.low)), hi = Math.max(...candles.map(c => c.high));
+  if (zone?.level != null) { lo = Math.min(lo, zone.level); hi = Math.max(hi, zone.level); }
+  if (levels) {
+    [levels.entry, levels.stopLoss, levels.tp1, levels.tp2, levels.tp3].forEach(p => { if (p != null) { lo = Math.min(lo, p); hi = Math.max(hi, p); } });
+  }
+  const range = (hi - lo) || (hi * 0.01) || 1;
+  lo -= range * 0.08; hi += range * 0.08;
+  const yFor = price => topPad + plotH * (1 - (price - lo) / (hi - lo));
+
+  ctx.strokeStyle = "#201b13"; ctx.fillStyle = "#a89e88"; ctx.font = "9.5px monospace"; ctx.lineWidth = 1;
+  for (let i = 0; i <= 3; i++) {
+    const price = lo + (hi - lo) * (i / 3), y = yFor(price);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
+    ctx.fillText(price.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }), plotW + 6, y + 3);
+  }
+
+  const slotW = plotW / candles.length, bodyW = Math.max(2, Math.min(10, slotW * 0.6));
+  let entryIdx = -1;
+  candles.forEach((c, i) => {
+    const x = i * slotW + slotW / 2, up = c.close >= c.open;
+    ctx.strokeStyle = ctx.fillStyle = up ? "#3fb28f" : "#e0562f"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x, yFor(c.high)); ctx.lineTo(x, yFor(c.low)); ctx.stroke();
+    const yO = yFor(c.open), yC = yFor(c.close), top = Math.min(yO, yC), h = Math.max(1, Math.abs(yC - yO));
+    ctx.fillRect(x - bodyW / 2, top, bodyW, h);
+    if (levels?.candleTime && c.time === levels.candleTime) entryIdx = i;
+  });
+
+  if (zone?.level != null) {
+    const y = yFor(zone.level);
+    ctx.strokeStyle = zone.direction === "buy" ? "#3fb28f" : "#e0562f";
+    ctx.setLineDash([4, 3]); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillText(zone.direction === "buy" ? "buy zone" : "sell zone", plotW + 6, y - 4);
+  }
+
+  if (levels) {
+    const rows = [
+      levels.stopLoss != null && { price: levels.stopLoss, label: `SL ${fmt(levels.stopLoss, decimals)}`, color: "#e0562f" },
+      levels.entry != null && { price: levels.entry, label: `Entry ${fmt(levels.entry, decimals)}`, color: "#f3ede1" },
+      levels.tp1 != null && { price: levels.tp1, label: `TP1 ${fmt(levels.tp1, decimals)}`, color: "#3fb28f" },
+      levels.tp2 != null && { price: levels.tp2, label: `TP2 ${fmt(levels.tp2, decimals)}`, color: "#3fb28f" },
+      levels.tp3 != null && { price: levels.tp3, label: `TP3 ${fmt(levels.tp3, decimals)}`, color: "#3fb28f" },
+    ].filter(Boolean);
+    rows.forEach(r => {
+      const y = yFor(r.price);
+      ctx.strokeStyle = r.color; ctx.lineWidth = 1;
+      ctx.setLineDash(levels.confirmed ? [] : [3, 3]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = r.color; ctx.font = "9px monospace";
+      ctx.fillText(r.label, plotW + 6, y + 3);
+    });
+    if (entryIdx >= 0) {
+      const x = entryIdx * slotW + slotW / 2;
+      const isBuy = levels.direction === "buy";
+      const y = isBuy ? yFor(candles[entryIdx].low) + 16 : yFor(candles[entryIdx].high) - 16;
+      ctx.fillStyle = isBuy ? "#3fb28f" : "#e0562f";
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - 16, y - 8, 32, 16, 4) : ctx.rect(x - 16, y - 8, 32, 16);
+      ctx.fill();
+      ctx.fillStyle = "#0e0c09"; ctx.font = "bold 9px monospace"; ctx.textAlign = "center";
+      ctx.fillText(isBuy ? "BUY" : "SELL", x, y + 3);
+      ctx.textAlign = "left";
+    }
+  }
+}
+
+/* ---------------- per-card rendering ---------------- */
+
+function renderConfidenceHTML(confidence) {
+  if (!confidence) return "";
+  const { score, checks } = confidence;
+  const color = score >= 70 ? "var(--buy)" : score >= 40 ? "var(--gold)" : "var(--sell)";
+  const checklist = checks.map(c => `<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;">
+      <span style="color:${c.pass ? "var(--ink)" : "var(--ink-dim)"};">${c.pass ? "✔" : "✘"} ${c.label}</span>
+      <span style="color:var(--ink-dim);font-family:var(--mono);">${c.points >= 0 ? "+" : ""}${c.points}</span>
+    </div>`).join("");
+  return `<div class="stat" style="margin-top:9px;">
+    <div style="display:flex;align-items:baseline;gap:10px;">
+      <div style="font-family:var(--mono);font-size:26px;font-weight:700;color:${color};">${score}%</div>
+      <div class="k" style="margin-top:0;">Confidence score</div>
+    </div>
+    <div style="margin-top:6px;font-size:11px;">${checklist}</div>
+  </div>`;
+}
+
+function smcSummary(smc) {
+  if (!smc) return "";
+  const parts = [];
+  if (smc.fvg) parts.push(smc.fvg.type.replace("_", " "));
+  if (smc.orderBlock) parts.push(smc.orderBlock.type.replace("_", " "));
+  if (smc.structure) parts.push(`${smc.structure.kind} (${smc.structure.direction})`);
+  return parts.join(", ");
+}
+
+function renderCard(sym, payload) {
+  const { tfReads, signal, confidence, lastPrice, error, caution, dxy } = payload;
+  document.getElementById(`priceValue-${sym.key}`).textContent = error ? "—" : fmt(lastPrice, sym.decimals);
+  const statusEl = document.getElementById(`status-${sym.key}`);
+  if (error) { statusEl.textContent = "data error"; statusEl.className = "status-badge err"; }
+  else if (signal?.status === "signal") { statusEl.textContent = `${signal.direction} signal`; statusEl.className = `status-badge signal-${signal.direction}`; }
+  else { statusEl.textContent = "watching"; statusEl.className = "status-badge watching"; }
+
+  document.getElementById(`tfrow-${sym.key}`).innerHTML = error ? "" : ["daily","4h","1h","15m"].map(t => {
+    const r = tfReads[t] || {};
+    const label = t === "daily" ? "Daily" : t;
+    const detail = (r.ema20 != null && r.ema50 != null && r.rsi14 != null)
+      ? `<div style="font-size:9px;color:var(--ink-dim);margin-top:2px;">EMA20 ${fmt(r.ema20, sym.decimals)} · EMA50 ${fmt(r.ema50, sym.decimals)} · RSI ${r.rsi14.toFixed(0)}</div>`
+      : "";
+    return `<div class="${tfChipClass(r.bias || "neutral")}">${label} <b>${r.bias || "neutral"}</b>${detail}</div>`;
+  }).join("");
+
+  const detailsEl = document.getElementById(`details-${sym.key}`);
+  if (error) {
+    const hasTD = !!getTwelveDataKey(), hasFH = !!getFinnhubKey();
+    const suggestion = sym.kind === "crypto"
+      ? "Binance may be briefly unreachable — try Refresh in a minute."
+      : (hasTD || hasFH)
+        ? "Try Refresh in a minute — if it persists, your API key(s) may have hit their rate limit."
+        : `Yahoo's free feed without a key is unreliable for some networks/regions. Tap <b>⚙ API key</b> above and add a free <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a> key.`;
+    detailsEl.innerHTML = `<div class="reason">Couldn't load data (${error}). ${suggestion}</div>`;
+    return;
+  }
+
+  let html = "";
+  if (signal?.status === "signal") {
+    const smcText = smcSummary(signal.smc);
+    html = `<div class="grid">
+      <div class="stat"><div class="k">Entry</div><div class="v">${fmt(signal.entry, sym.decimals)}</div></div>
+      <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(signal.stopLoss, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP1 (1:${signal.riskRewardTp1})</div><div class="v">${fmt(signal.tp1, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP2 (1:${signal.riskRewardTp2})</div><div class="v">${fmt(signal.tp2, sym.decimals)}</div></div>
+      <div class="stat"><div class="k">15m trigger</div><div class="v" style="font-size:11px;">${signal.pattern.replace(/_/g," ")}</div></div>
+      <div class="stat"><div class="k">Zone level</div><div class="v">${fmt(signal.zoneLevel, sym.decimals)}</div></div>
+      ${smcText ? `<div class="stat"><div class="k">Smart Money context</div><div class="v" style="font-size:11px;">${smcText}</div></div>` : ""}
+    </div>`;
+    html += renderConfidenceHTML(confidence);
+  } else if (signal?.preview) {
+    const p = signal.preview, dirLabel = signal.direction === "buy" ? "Potential buy setup" : "Potential sell setup";
+    html = `
+      <div class="reason">${dirLabel} forming — not confirmed yet: ${signal.reason}</div>
+      <div class="grid">
+        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
+        <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP1 (1:1.5)</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP2 (1:3)</div><div class="v">${fmt(p.tp2, sym.decimals)}</div></div>
+      </div>`;
+    html += renderConfidenceHTML(confidence);
+  } else {
+    html = `<div class="reason">${signal?.reason || "collecting data..."}</div>`;
+  }
+
+  if (dxy) {
+    const agreeText = dxy.confluence == null ? "" : dxy.confluence.agrees
+      ? `<span style="color:var(--buy);">supports the current bias</span>`
+      : `<span style="color:var(--sell);">currently conflicts with the bias</span>`;
+    html += `<div class="reason" style="margin-top:10px;">
+      <b style="color:var(--ink);">USD Index (DXY):</b> 4h ${dxy.h4.bias}, 1h ${dxy.h1.bias}
+      ${agreeText ? "— " + agreeText : ""}.
+    </div>`;
+    if (dxy.confluence && !dxy.confluence.agrees) {
+      html += `<div class="caution">🔀 DXY (${dxy.h4.bias}) is moving with this asset's bias right now instead of the usual inverse relationship — a conflicting signal worth weighing.</div>`;
+    }
+  }
+  if (caution) {
+    html += `<div class="caution">⚠ High-impact USD event nearby: <b>${caution.title}</b> at ${fmtEventTime(caution.ts)}. Expect volatility spikes around this time.</div>`;
+  }
+  const h1ER = tfReads["1h"]?.efficiencyRatio;
+  if (h1ER != null && h1ER < 0.3 && signal?.status !== "signal") {
+    html += `<div class="caution">↔ 1h is choppy right now (efficiency ratio ${h1ER.toFixed(2)}). The trend bias above may be lagging a sideways range.</div>`;
+  }
+  detailsEl.innerHTML = html;
+
+  if (alertsEnabled && signal?.status === "signal") {
+    const sig = `${sym.key}:${signal.direction}:${signal.candleTime}`;
+    if (!notifiedSignatures.has(sig)) {
+      notifiedSignatures.add(sig);
+      if (Notification.permission === "granted") {
+        new Notification(`${signal.direction.toUpperCase()} ${sym.label}`, { body: `Entry ${fmt(signal.entry, sym.decimals)} | SL ${fmt(signal.stopLoss, sym.decimals)} | TP1 ${fmt(signal.tp1, sym.decimals)} | 15m ${signal.pattern.replace(/_/g," ")}` });
+      }
+    }
+  }
+}
+
+function renderCalendar(cal) {
+  const body = document.getElementById("calendarBody");
+  if (cal.error) { body.innerHTML = `<div class="reason">Couldn't load the calendar (${cal.error}).</div>`; return; }
+  if (!cal.events.length) { body.innerHTML = `<div class="reason">No upcoming high/medium-impact USD events in the next few days.</div>`; return; }
+  body.innerHTML = cal.events.map(e => `
+    <div class="event-row">
+      <div class="event-header">
+        <div class="event-time">${fmtEventTime(e.ts)}</div>
+        <div class="event-title">${e.title} <span style="color:var(--ink-dim);">(${e.country})</span></div>
+        <div class="event-impact ${e.impact}">${e.impact}</div>
+      </div>
+      <div class="event-hint">${marketImpactHint(e)}</div>
+    </div>`).join("");
+}
+
+function renderTrendTableBody(rows) {
+  const body = document.getElementById("trendTableBody");
+  if (!rows) { body.innerHTML = `<div class="reason">loading…</div>`; return; }
+  body.innerHTML = rows.map(r => {
+    const cls = r.bias === "bullish" ? "bull" : r.bias === "bearish" ? "bear" : "neutral";
+    return `<div class="trend-cell ${cls}"><div class="tl">${r.label}</div><div class="tv">${r.bias}</div></div>`;
+  }).join("");
+}
+
+// Trend table fetches only its own extra 1-minute data on demand -- the
+// 15m/1h/4h series it needs are already sitting in symbolState from the
+// main scan, so switching symbols here doesn't re-fetch those.
+async function refreshTrendTable() {
+  const sym = symbolByKey(trendTableSymbol);
+  const st = symbolState[sym.key];
+  if (!st.data) { renderTrendTableBody(null); return; }
+  renderTrendTableBody(null);
+  try {
+    const m1 = await get1mCandlesFor(sym);
+    const rows = buildTrendTable(m1, st.data.candles["15m"], st.data.candles["1h"], st.data.candles["4h"]);
+    renderTrendTableBody(rows);
+  } catch (err) {
+    document.getElementById("trendTableBody").innerHTML = `<div class="reason">Couldn't load 1-minute data (${err.message}).</div>`;
+  }
+}
+
+function renderBacktest(result) {
+  const body = document.getElementById("backtestBody");
+  if (result.error) { body.innerHTML = `<div class="reason">${result.error}</div>`; return; }
+  const winRateStr = result.winRate != null ? `${result.winRate.toFixed(0)}%` : "—";
+  const avgRStr = result.avgR != null ? `${result.avgR >= 0 ? "+" : ""}${result.avgR.toFixed(2)}R` : "—";
+  const fromStr = result.from ? fmtDateUAE(new Date(result.from)) : "—";
+  const toStr = result.to ? fmtDateUAE(new Date(result.to)) : "—";
+  body.innerHTML = `
+    <div class="bt-grid">
+      <div class="stat"><div class="k">Signals fired</div><div class="v">${result.totalSignals}</div></div>
+      <div class="stat"><div class="k">Win rate</div><div class="v">${winRateStr}</div></div>
+      <div class="stat"><div class="k">Avg R / trade</div><div class="v">${avgRStr}</div></div>
+      <div class="stat"><div class="k">Sample (W-L)</div><div class="v">${result.wins}-${result.losses}</div></div>
+    </div>
+    <div class="reason">
+      Period covered: ${fromStr} → ${toStr}. TP1/SL only. Spread, slippage,
+      and execution delay aren't modeled. Small sample sizes are common and
+      not statistically reliable — treat this as a sanity check on the
+      logic, not a performance guarantee.
+    </div>`;
+}
+
+/* ---------------- trade journal (localStorage, all symbols combined) ---------------- */
+
+const JOURNAL_KEY = "zs_journal";
+function loadJournal() { try { return JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; } catch { return []; } }
+function saveJournal(entries) { try { localStorage.setItem(JOURNAL_KEY, JSON.stringify(entries)); } catch {} }
+
+function journalRecordSignal(symKey, signal) {
+  if (signal?.status !== "signal") return;
+  const entries = loadJournal();
+  const id = `${symKey}:${signal.direction}:${signal.candleTime}`;
+  if (entries.some(e => e.id === id)) return;
+  entries.unshift({ id, symbol: symKey, direction: signal.direction, entry: signal.entry, stopLoss: signal.stopLoss, tp1: signal.tp1, tp2: signal.tp2, tp3: signal.tp3, loggedAt: Date.now(), status: "open", outcome: null });
+  saveJournal(entries.slice(0, 300));
+}
+
+function journalUpdateOutcomes(symKey, lastPrice) {
+  if (lastPrice == null) return;
+  const entries = loadJournal();
+  let changed = false;
+  for (const e of entries) {
+    if (e.symbol !== symKey || e.status !== "open") continue;
+    if (e.direction === "buy") {
+      if (lastPrice <= e.stopLoss) { e.status = "closed"; e.outcome = "loss"; e.closedAt = Date.now(); changed = true; }
+      else if (lastPrice >= e.tp1) { e.status = "closed"; e.outcome = "win"; e.closedAt = Date.now(); changed = true; }
+    } else {
+      if (lastPrice >= e.stopLoss) { e.status = "closed"; e.outcome = "loss"; e.closedAt = Date.now(); changed = true; }
+      else if (lastPrice <= e.tp1) { e.status = "closed"; e.outcome = "win"; e.closedAt = Date.now(); changed = true; }
+    }
+  }
+  if (changed) saveJournal(entries);
+}
+
+function renderJournal() {
+  const entries = loadJournal();
+  const body = document.getElementById("journalBody");
+  const closed = entries.filter(e => e.status === "closed");
+  const wins = closed.filter(e => e.outcome === "win").length;
+  const losses = closed.filter(e => e.outcome === "loss").length;
+  const winRate = closed.length ? ((wins / closed.length) * 100).toFixed(0) + "%" : "—";
+
+  let html = `<div class="grid" style="grid-template-columns:repeat(3,1fr);">
+    <div class="stat"><div class="k">Logged</div><div class="v">${entries.length}</div></div>
+    <div class="stat"><div class="k">Win rate</div><div class="v">${winRate}</div></div>
+    <div class="stat"><div class="k">Record</div><div class="v">${wins}-${losses}</div></div>
+  </div>`;
+
+  if (!entries.length) {
+    html += `<div class="reason" style="margin-top:10px;">No signals logged yet — entries appear automatically the moment a confirmed signal fires on any asset.</div>`;
+  } else {
+    html += entries.slice(0, 20).map(e => {
+      const outcomeLabel = e.status === "open" ? "open" : e.outcome;
+      const dec = symbolByKey(e.symbol)?.decimals ?? 2;
+      return `<div class="journal-row">
+        <span class="journal-sym">${e.symbol}</span>
+        <span class="journal-dir ${e.direction}">${e.direction}</span>
+        <span style="flex:1;">${fmt(e.entry, dec)} → SL ${fmt(e.stopLoss, dec)}</span>
+        <span style="color:var(--ink-dim);">${fmtDateUAE(new Date(e.loggedAt))}</span>
+        <span class="journal-outcome ${outcomeLabel}">${outcomeLabel}</span>
+      </div>`;
+    }).join("");
+  }
+  body.innerHTML = html;
+}
+
+/* ---------------- position sizing calculator ---------------- */
+
+function renderPositionSizing() {
+  const resultEl = document.getElementById("sizingResult");
+  const sym = symbolByKey(sizingSymbol);
+  const st = symbolState[sym.key];
+  const signal = st.data?.signal;
+  const entry = signal?.status === "signal" ? signal.entry : (signal?.preview ? st.data.lastPrice : null);
+  const stopLoss = signal?.status === "signal" ? signal.stopLoss : signal?.preview?.stopLoss;
+  if (entry == null || stopLoss == null) { resultEl.textContent = `Waiting for a ${sym.label} signal or preview to size against…`; return; }
+
+  const balance = parseFloat(document.getElementById("acctBalance").value) || 0;
+  const riskPct = parseFloat(document.getElementById("riskPercent").value) || 0;
+  if (balance <= 0 || riskPct <= 0) { resultEl.textContent = "Enter your account balance and risk % above."; return; }
+
+  const riskAmount = balance * (riskPct / 100);
+  const priceRisk = Math.abs(entry - stopLoss);
+  const units = priceRisk > 0 ? riskAmount / priceRisk : 0;
+
+  if (sym.kind === "metal") {
+    const standardLots = units / 100; // most brokers: 1 standard lot = 100oz for XAU/XAG
+    resultEl.innerHTML = `Risking <b style="color:var(--gold);">$${riskAmount.toFixed(2)}</b> (${riskPct}% of $${balance.toFixed(0)}) on a $${priceRisk.toFixed(sym.decimals)}/oz stop
+      → <b style="color:var(--ink);">${standardLots.toFixed(2)} standard lots</b> (${units.toFixed(1)} oz).<br/>
+      <span style="color:var(--ink-dim);">Assumes the common 100oz-per-lot contract size — check your broker's actual specs, they vary.</span>`;
+  } else {
+    resultEl.innerHTML = `Risking <b style="color:var(--gold);">$${riskAmount.toFixed(2)}</b> (${riskPct}% of $${balance.toFixed(0)}) on a $${priceRisk.toFixed(2)} stop
+      → <b style="color:var(--ink);">${units.toFixed(units < 1 ? 5 : 3)} ${sym.key}</b>.<br/>
+      <span style="color:var(--ink-dim);">Most exchanges let you trade fractional amounts — check your platform's minimum order size.</span>`;
+  }
+}
+
+/* ---------------- data health ---------------- */
+
+let lastSuccessfulScanAt = null;
+const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+
+function renderDataHealth() {
+  const el = document.getElementById("dataHealth");
+  if (!el) return;
+  if (!lastSuccessfulScanAt) { el.textContent = ""; return; }
+  const staleFor = Date.now() - lastSuccessfulScanAt;
+  if (staleFor > STALE_THRESHOLD_MS) {
+    el.innerHTML = `<span style="color:var(--sell);">⚠ data stale — last good scan ${Math.round(staleFor / 60000)} min ago</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--buy);">● data fresh</span>`;
+  }
+}
+
+/* ---------------- main scan ---------------- */
+
+async function scanSymbol(sym, dxy, newsSoon) {
+  try {
+    const [c15, c1h, c4h] = await Promise.all([getCandlesFor(sym, "15m"), getCandlesFor(sym, "1h"), getCandlesFor(sym, "4h")]);
+    const cDaily = resampleToDaily(c4h);
+    const tfReads = { "15m": analyzeTimeframe(c15), "1h": analyzeTimeframe(c1h), "4h": analyzeTimeframe(c4h), "daily": analyzeTimeframe(cDaily) };
+    const signal = buildSignal(tfReads);
+    const confidence = computeConfidence(tfReads, signal.direction, newsSoon);
+    const lastPrice = c15[c15.length - 1]?.close ?? null;
+    const payload = { candles: { "15m": c15.slice(-120), "1h": c1h.slice(-120), "4h": c4h.slice(-120) }, tfReads, signal, confidence, lastPrice, dxy: sym.kind === "metal" ? dxy : null };
+    symbolState[sym.key].data = payload;
+    return payload;
+  } catch (err) {
+    symbolState[sym.key].data = null;
+    renderCard(sym, { error: err.message });
+    return null;
+  }
+}
+
+async function scanAll() {
+  // DXY and the calendar are fetched first, in parallel -- the calendar's
+  // "is a major release imminent" flag feeds directly into each symbol's
+  // confidence score, so it needs to be ready before scanSymbol runs.
+  const [dxyResult, cal] = await Promise.all([
+    (async () => {
+      try {
+        const [dxy1h, dxy4h] = await Promise.all([getDXYCandles("1h"), getDXYCandles("4h")]);
+        return { readH1: analyzeTimeframe(dxy1h), readH4: analyzeTimeframe(dxy4h) };
+      } catch (err) {
+        console.warn("DXY fetch failed (non-critical):", err.message);
+        return null;
+      }
+    })(),
+    fetchCalendar(),
+  ]);
+  const newsSoon = !!cal.caution;
+
+  await Promise.all(SYMBOLS.map(async sym => {
+    const dxyForSym = dxyResult ? { h1: dxyResult.readH1, h4: dxyResult.readH4, confluence: null } : null;
+    const payload = await scanSymbol(sym, dxyForSym, newsSoon);
+    if (!payload) return;
+    if (dxyForSym) dxyForSym.confluence = dxyConfluence(payload.signal.direction, dxyResult.readH4.bias, dxyResult.readH1.bias);
+    payload.caution = cal.caution;
+    renderCard(sym, payload);
+    paintChart(sym.key);
+    journalRecordSignal(sym.key, payload.signal);
+    journalUpdateOutcomes(sym.key, payload.lastPrice);
+  }));
+
+  renderCalendar(cal);
+  renderJournal();
+  renderPositionSizing();
+  refreshTrendTable();
+
+  lastSuccessfulScanAt = Date.now();
+  renderDataHealth();
+}
+
+function setUpdatedLabel() {
+  document.getElementById("updated").textContent = `updated ${fmtTimeUAE(new Date())} UAE`;
+}
+function updateSessionBadge() {
+  const el = document.getElementById("sessionBadge");
+  if (!el) return;
+  const s = currentSession();
+  el.innerHTML = `<span style="color:var(--gold);">${fmtTimeUAE(new Date())} UAE</span> · ${s.label} <span style="color:var(--ink-dim);">(${s.note})</span>`;
+}
+
+/* ---------------- event wiring ---------------- */
+
+renderShell();
+
+document.getElementById("refreshBtn").addEventListener("click", async () => { document.getElementById("updated").textContent = "scanning…"; await scanAll(); setUpdatedLabel(); });
+document.getElementById("apiKeyBtn").addEventListener("click", () => {
+  const box = document.getElementById("apiKeyBox");
+  box.style.display = box.style.display === "none" ? "block" : "none";
+  document.getElementById("apiKeyInput").value = getTwelveDataKey();
+  document.getElementById("finnhubInput").value = getFinnhubKey();
+});
+document.getElementById("saveApiKey").addEventListener("click", () => {
+  const val = document.getElementById("apiKeyInput").value.trim();
+  if (val) localStorage.setItem("zs_td_key", val);
+  document.getElementById("apiKeyBox").style.display = "none";
+  scanAll();
+});
+document.getElementById("clearApiKey").addEventListener("click", () => {
+  localStorage.removeItem("zs_td_key");
+  document.getElementById("apiKeyInput").value = "";
+  document.getElementById("apiKeyBox").style.display = "none";
+  scanAll();
+});
+document.getElementById("saveFinnhub").addEventListener("click", () => {
+  const val = document.getElementById("finnhubInput").value.trim();
+  if (val) localStorage.setItem("zs_fh_key", val);
+  document.getElementById("apiKeyBox").style.display = "none";
+  scanAll();
+});
+document.getElementById("clearFinnhub").addEventListener("click", () => {
+  localStorage.removeItem("zs_fh_key");
+  document.getElementById("finnhubInput").value = "";
+  document.getElementById("apiKeyBox").style.display = "none";
+  scanAll();
+});
+document.getElementById("notifyBtn").addEventListener("click", async () => {
+  if (!("Notification" in window)) { alert("This browser doesn't support notifications."); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === "granted") {
+    alertsEnabled = true;
+    document.getElementById("notifyBtn").classList.add("on");
+    document.getElementById("notifyBtn").textContent = "Alerts on";
+  }
+});
+document.getElementById("backtestBtn").addEventListener("click", async () => {
+  const btn = document.getElementById("backtestBtn");
+  btn.textContent = "Running…"; btn.disabled = true;
+  try {
+    const sym = symbolByKey(backtestSymbol);
+    const apiKey = getTwelveDataKey();
+    const outputsize = (apiKey && sym.kind === "metal") ? 800 : 150;
+    const [c15, c1h, c4h] = await Promise.all([getCandlesFor(sym, "15m", outputsize), getCandlesFor(sym, "1h", outputsize), getCandlesFor(sym, "4h", outputsize)]);
+    const result = runBacktest(c15, c1h, c4h);
+    renderBacktest(result);
+    document.getElementById("card-tools").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    renderBacktest({ error: err.message });
+  }
+  btn.textContent = "Run backtest"; btn.disabled = false;
+});
+
+renderJournal();
+updateSessionBadge();
+setInterval(updateSessionBadge, 30 * 1000);
+setInterval(renderDataHealth, 30 * 1000);
+scanAll().then(setUpdatedLabel);
+setInterval(async () => { await scanAll(); setUpdatedLabel(); }, 5 * 60 * 1000);
+setInterval(liveTick, 15 * 1000);
+</script>
+</body>
+</html>
