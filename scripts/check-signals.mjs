@@ -301,8 +301,9 @@ function smcSupports(smc, direction) {
 
 // Two-tier confluence, matching the app exactly: 1H sets the bias and must
 // be in a zone, 15M supplies the trigger (candle pattern or SMC structure
-// break). Daily/4H are no longer required to fire a signal.
-function buildSignal(tfReads) {
+// break) -- AND every confidence-checklist factor must also pass before
+// this counts as a real "signal" worth notifying about.
+function buildSignal(tfReads, newsSoon) {
   const h1 = tfReads["1h"], m15 = tfReads["15m"];
   if (!h1.bias || h1.bias === "neutral") return { status: "watching", reason: "1H has no clear trend right now — no bias to trade either direction" };
   const direction = h1.bias === "bullish" ? "buy" : "sell";
@@ -317,16 +318,20 @@ function buildSignal(tfReads) {
 
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
+  const confidence = computeConfidence(tfReads, direction, newsSoon);
+  const allChecksPass = !!confidence && confidence.checks.every(c => c.pass);
 
-  if (!inZone || !m15Confirms) {
-    const reason = !inZone ? "1H trend set, but price isn't at a zone yet"
-      : "In a zone — waiting for a 15m candle or structure break to confirm";
-    return { status: "watching", direction, preview, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
+  if (!inZone || !m15Confirms || !allChecksPass) {
+    let reason;
+    if (!inZone) reason = "1H trend set, but price isn't at a zone yet";
+    else if (!m15Confirms) reason = "In a zone — waiting for a 15m candle or structure break to confirm";
+    else reason = `Trigger conditions met, but not every confluence factor lines up yet: ${confidence.checks.filter(c => !c.pass).map(c => c.label).join("; ")}`;
+    return { status: "watching", direction, preview, confidence, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
 
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
   const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc, confidence };
 }
 
 // Weighted 0-100 confidence score. Simplified vs. the app's version: this
@@ -476,8 +481,8 @@ async function checkSymbol(sym, newsSoon, state) {
     return false;
   }
 
-  const signal = buildSignal(tfReads);
-  const confidence = computeConfidence(tfReads, signal.direction, newsSoon);
+  const signal = buildSignal(tfReads, newsSoon);
+  const confidence = signal.confidence || null;
 
   console.log(`${sym.key}: 1h=${tfReads["1h"].bias} 15m=${tfReads["15m"].pattern?.type || "none"} -> ${signal.status}${confidence ? ` (${confidence.score}%)` : ""}`);
 
