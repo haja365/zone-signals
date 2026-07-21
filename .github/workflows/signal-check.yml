@@ -24,6 +24,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
           FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
+          MIN_PIPS: ${{ secrets.MIN_PIPS }}
+          MAX_PIPS: ${{ secrets.MAX_PIPS }}
         run: node scripts/check-signals.mjs
 
       - name: Commit updated notification state
