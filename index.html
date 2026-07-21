@@ -173,30 +173,33 @@
   All times shown are in <b>UAE time</b> (Asia/Dubai), regardless of your
   device's own timezone setting.<br/><br/>
   Each chart plots Entry/SL/TP1/TP2/TP3 directly on the 15m candles (dashed
-  while unconfirmed, solid once a signal fires). Daily sets the bias, then
-  only <b>one</b> of 4H/1H needs to agree (not both), and the 15m trigger
-  accepts either a candle pattern or a Smart Money structure break — looser
-  than a strict all-four-agree chain, so signals fire more often, while
-  still requiring real multi-timeframe + price-action agreement. TP1/TP2/TP3
-  target a configurable pip range (Size tab — default 100/200 pips, i.e.
-  $1.00-$2.00 on gold/silver at the standard $0.01-per-pip convention) rather
-  than a pure risk-multiple, with a rough reachability read based on recent
-  15m volatility. Each read also checks for Smart Money Concepts (Fair Value
+  while unconfirmed, solid once a signal fires). 1H sets the bias and must
+  be sitting in a zone, and the 15m trigger accepts either a candle pattern
+  or a Smart Money structure break — Daily and 4H are still fetched and
+  shown as context (Trend tab, confidence score) but no longer required for
+  a signal to fire. TP1/TP2/TP3 target a configurable pip range (Size tab —
+  default 100/200 pips at $0.10 per pip, i.e. $10-$20) rather than a pure
+  risk-multiple, with a rough reachability read based on recent 15m
+  volatility. Each read also checks for Smart Money Concepts (Fair Value
   Gaps, Order Blocks, Break of Structure / Change of Character) and rolls
   everything into a weighted 0-100 <b>confidence score</b> with a visible
   breakdown of what's contributing to it, including an automatic penalty
   when a major news release is imminent. The Trend / Size / Journal / News /
   Backtest tools are grouped into one panel below — switch tabs instead of
   scrolling through five separate cards.<br/><br/>
+  <b>Only one open trade per asset at a time.</b> Once a signal fires for
+  Gold or Silver, no new signal (or notification) fires for that asset
+  again until the open one hits its stop loss or TP1 — the card shows
+  "in trade" with the original entry/SL/TP until then.<br/><br/>
   <b>No trade is risk-free.</b> The stop loss, position sizing, and journal
   here exist to help you control and measure risk, not eliminate it.<br/><br/>
   <b>Alerts only fire while this page is open and your screen is on.</b> A
   closed app or locked phone can't receive push notifications without a
   backend server watching the market on your behalf.<br/><br/>
-  Auto-refreshes every 5 minutes. Running both metals with a Twelve Data key
-  uses roughly twice the daily credits a single metal would — if you hit
-  the free daily limit, it automatically falls back to Finnhub, then Yahoo,
-  for the rest of the day.<br/><br/>
+  Auto-refreshes every 2 minutes. Running both metals with a Twelve Data
+  key at this pace uses noticeably more of the free daily credit budget
+  than before — if you hit the limit, it automatically falls back to
+  Finnhub, then Yahoo, for the rest of the day.<br/><br/>
   <b>If every card shows "data error" at once:</b> you're viewing this inside
   a sandboxed preview (e.g. Claude's in-chat artifact panel) that blocks
   outbound network requests. Open the file directly in Safari/Chrome instead.
@@ -531,7 +534,7 @@ function biasAt(ind, i) {
 }
 // Same $0.01-per-pip convention used by Exness and virtually all CFD
 // brokers for both XAU/USD and XAG/USD.
-const PIP_SIZE = 0.01;
+const PIP_SIZE = 0.10;
 function getPipTargets() {
   const min = parseFloat(localStorage.getItem("zs_min_pips")) || 100;
   const max = parseFloat(localStorage.getItem("zs_max_pips")) || 200;
@@ -618,43 +621,36 @@ function smcSupports(smc, direction) {
   return false;
 }
 
-// Loosened four-tier confluence: Daily still sets the bias, but now only
-// ONE of 4H/1H needs to agree (not both), and the 15m trigger accepts a
-// candle pattern OR a Smart Money structure break in the same direction --
-// more entries than the original strict version, still requiring genuine
-// multi-timeframe + price-action agreement, not just one factor alone.
+// Two-tier confluence, by request: 1H sets the bias and must be sitting in
+// a zone, 15M supplies the entry trigger (candle pattern or SMC structure
+// break). Daily/4H are no longer required for the signal to fire -- they're
+// still fetched and shown for context (trend table, confidence score) but
+// don't gate the trigger itself.
 function buildSignal(tfReads) {
-  const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
-  if (!daily.bias || daily.bias === "neutral") return { status: "watching", reason: "Daily has no clear trend right now — no bias to trade either direction" };
-  const direction = daily.bias === "bullish" ? "buy" : "sell";
+  const h1 = tfReads["1h"], m15 = tfReads["15m"];
+  if (!h1.bias || h1.bias === "neutral") return { status: "watching", reason: "1H has no clear trend right now — no bias to trade either direction" };
+  const direction = h1.bias === "bullish" ? "buy" : "sell";
   const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
 
-  const h4Agrees = h4.bias === daily.bias;
-  const h1Agrees = h1.bias === daily.bias;
-  const higherTFAligned = h4Agrees || h1Agrees;
-
-  const h1InZone = h1Agrees && h1.zone && h1.zone.direction === direction;
-  const h4InZone = h4Agrees && h4.zone && h4.zone.direction === direction;
-  const inZone = h1InZone || h4InZone;
-  const zoneLevel = h1InZone ? h1.zone.level : h4InZone ? h4.zone.level : null;
+  const inZone = h1.zone && h1.zone.direction === direction;
+  const zoneLevel = inZone ? h1.zone.level : null;
 
   const patternConfirms = m15.pattern && m15.pattern.bias === direction;
   const structureConfirms = m15.smc?.structure && m15.smc.structure.direction === wantSmcDir;
-  const m15Confirms = higherTFAligned && inZone && (patternConfirms || structureConfirms);
+  const m15Confirms = inZone && (patternConfirms || structureConfirms);
 
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
 
-  if (!higherTFAligned || !inZone || !m15Confirms) {
-    const reason = !higherTFAligned ? "Neither 4H nor 1H aligned with Daily yet"
-      : !inZone ? "Aligned with Daily, but price isn't at a zone yet"
-      : "Aligned and in a zone — waiting for a 15m candle or structure break to confirm";
-    return { status: "watching", direction, preview, reason, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
+  if (!inZone || !m15Confirms) {
+    const reason = !inZone ? "1H trend set, but price isn't at a zone yet"
+      : "In a zone — waiting for a 15m candle or structure break to confirm";
+    return { status: "watching", direction, preview, reason, tf: { "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
 
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
   const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
 }
 
 // Weighted 0-100 confidence score. Timeframe alignment carries the most
@@ -714,38 +710,26 @@ function dxyConfluence(goldDirection, dxyH4Bias, dxyH1Bias) {
 
 /* ---------------- backtest ---------------- */
 
-function runBacktest(candles15, candles1h, candles4h) {
-  if (candles15.length < 80 || candles1h.length < 60 || candles4h.length < 60) {
+function runBacktest(candles15, candles1h) {
+  if (candles15.length < 80 || candles1h.length < 60) {
     return { error: "Not enough history fetched yet to backtest." };
   }
-  const candlesDaily = resampleToDaily(candles4h);
-  if (candlesDaily.length < 60) {
-    return { error: "Not enough 4H history fetched yet to derive a reliable Daily trend for backtesting." };
-  }
-  const ind15 = computeAll(candles15), ind1h = computeAll(candles1h), ind4h = computeAll(candles4h), indDaily = computeAll(candlesDaily);
-  let p1 = 0, p4 = 0, pd = 0;
-  const ONE_DAY = 24 * 3600000;
+  const ind15 = computeAll(candles15), ind1h = computeAll(candles1h);
+  let p1 = 0;
   const trades = [];
   for (let i = 60; i < candles15.length - 1; i++) {
     const t = candles15[i].time;
     while (p1 + 1 < candles1h.length && candles1h[p1 + 1].time + 3600000 <= t) p1++;
-    while (p4 + 1 < candles4h.length && candles4h[p4 + 1].time + 4 * 3600000 <= t) p4++;
-    while (pd + 1 < candlesDaily.length && candlesDaily[pd + 1].time + ONE_DAY <= t) pd++;
-    if (p1 < 60 || p4 < 60 || pd < 60) continue;
-    const dailyBias = biasAt(indDaily, pd);
-    if (dailyBias === "neutral") continue;
-    const direction = dailyBias === "bullish" ? "buy" : "sell";
-    const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
-    const h4Bias = biasAt(ind4h, p4);
+    if (p1 < 60) continue;
     const h1Bias = biasAt(ind1h, p1);
-    const h4Agrees = h4Bias === dailyBias, h1Agrees = h1Bias === dailyBias;
-    if (!h4Agrees && !h1Agrees) continue;
-    const h1Zone = h1Agrees ? zoneAt(candles1h, ind1h, p1, direction) : { inZone: false };
-    const h4Zone = h4Agrees ? zoneAt(candles4h, ind4h, p4, direction) : { inZone: false };
-    if (!h1Zone.inZone && !h4Zone.inZone) continue;
+    if (h1Bias === "neutral") continue;
+    const direction = h1Bias === "bullish" ? "buy" : "sell";
+    const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
+    const h1Zone = zoneAt(candles1h, ind1h, p1, direction);
+    if (!h1Zone.inZone) continue;
     const pattern = detectPattern(candles15, i);
     const patternConfirms = pattern && pattern.bias === direction;
-    const smc = findRecentSMC(candles15, ind15, i, dailyBias);
+    const smc = findRecentSMC(candles15, ind15, i, h1Bias);
     const structureConfirms = smc.structure && smc.structure.direction === wantSmcDir;
     if (!patternConfirms && !structureConfirms) continue;
     const entry = candles15[i].close;
@@ -944,10 +928,10 @@ function renderShell() {
         </div>
       </div>
       <div class="reason" style="margin-top:8px;">
-        1 pip = $0.01 on gold/silver (Exness/standard CFD convention) — so
-        100-200 pips = a $1.00-$2.00 move. TP1 targets the min, TP3 the max,
-        TP2 the midpoint. Changing these updates every new signal going
-        forward, not ones already fired.
+        1 pip = $0.10 (your set convention) — so 100-200 pips = a
+        $10.00-$20.00 move. TP1 targets the min, TP3 the max, TP2 the
+        midpoint. Changing these updates every new signal going forward,
+        not ones already fired.
       </div>
       <div id="sizingResult" class="reason" style="margin-top:10px;">Waiting for a signal or preview to size against…</div>
     </div>
@@ -1178,19 +1162,20 @@ function smcSummary(smc) {
 
 function renderCard(sym, payload) {
   const { tfReads, signal, confidence, lastPrice, error, caution, dxy } = payload;
+  const openTrade = error ? null : getOpenTrade(sym.key);
   document.getElementById(`priceValue-${sym.key}`).textContent = error ? "—" : fmt(lastPrice, sym.decimals);
   const statusEl = document.getElementById(`status-${sym.key}`);
   if (error) { statusEl.textContent = "data error"; statusEl.className = "status-badge err"; }
+  else if (openTrade) { statusEl.textContent = `${openTrade.direction} in trade`; statusEl.className = `status-badge signal-${openTrade.direction}`; }
   else if (signal?.status === "signal") { statusEl.textContent = `${signal.direction} signal`; statusEl.className = `status-badge signal-${signal.direction}`; }
   else { statusEl.textContent = "watching"; statusEl.className = "status-badge watching"; }
 
-  document.getElementById(`tfrow-${sym.key}`).innerHTML = error ? "" : ["daily","4h","1h","15m"].map(t => {
+  document.getElementById(`tfrow-${sym.key}`).innerHTML = error ? "" : ["1h","15m"].map(t => {
     const r = tfReads[t] || {};
-    const label = t === "daily" ? "Daily" : t;
     const detail = (r.ema20 != null && r.ema50 != null && r.rsi14 != null)
       ? `<div style="font-size:9px;color:var(--ink-dim);margin-top:2px;">EMA20 ${fmt(r.ema20, sym.decimals)} · EMA50 ${fmt(r.ema50, sym.decimals)} · RSI ${r.rsi14.toFixed(0)}</div>`
       : "";
-    return `<div class="${tfChipClass(r.bias || "neutral")}">${label} <b>${r.bias || "neutral"}</b>${detail}</div>`;
+    return `<div class="${tfChipClass(r.bias || "neutral")}">${t} <b>${r.bias || "neutral"}</b>${detail}</div>`;
   }).join("");
 
   const detailsEl = document.getElementById(`details-${sym.key}`);
@@ -1211,7 +1196,16 @@ function renderCard(sym, payload) {
     : f === "stretch" ? `<span style="color:var(--gold);">a bit of a stretch given current volatility</span>`
     : f === "ambitious" ? `<span style="color:var(--sell);">ambitious right now — current volatility is low relative to this target</span>`
     : "";
-  if (signal?.status === "signal") {
+  if (openTrade) {
+    html = `<div class="reason">In an open ${openTrade.direction} trade since ${fmtDateUAE(new Date(openTrade.loggedAt))} — waiting for price to hit stop loss or TP1 before a new signal can fire for ${sym.label.split(" ")[0]}.</div>
+    <div class="grid">
+      <div class="stat"><div class="k">Entry</div><div class="v">${fmt(openTrade.entry, sym.decimals)}</div></div>
+      <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(openTrade.stopLoss, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP1</div><div class="v">${fmt(openTrade.tp1, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP2</div><div class="v">${fmt(openTrade.tp2, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP3</div><div class="v">${fmt(openTrade.tp3, sym.decimals)}</div></div>
+    </div>`;
+  } else if (signal?.status === "signal") {
     const smcText = smcSummary(signal.smc);
     html = `<div class="grid">
       <div class="stat"><div class="k">Entry</div><div class="v">${fmt(signal.entry, sym.decimals)}</div></div>
@@ -1229,7 +1223,7 @@ function renderCard(sym, payload) {
     html = `
       <div class="reason">${dirLabel} forming — not confirmed yet: ${signal.reason}</div>
       <div class="grid">
-        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
+        <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(tfReads["15m"]?.lastClose ?? lastPrice, sym.decimals)}</div></div>
         <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP1 · ${p.minPips}p</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
         <div class="stat buy"><div class="k">TP3 · ${p.maxPips}p</div><div class="v">${fmt(p.tp3, sym.decimals)}</div></div>
@@ -1260,7 +1254,7 @@ function renderCard(sym, payload) {
   }
   detailsEl.innerHTML = html;
 
-  if (alertsEnabled && signal?.status === "signal") {
+  if (!openTrade && alertsEnabled && signal?.status === "signal") {
     const sig = `${sym.key}:${signal.direction}:${signal.candleTime}`;
     if (!notifiedSignatures.has(sig)) {
       notifiedSignatures.add(sig);
@@ -1340,8 +1334,13 @@ const JOURNAL_KEY = "zs_journal";
 function loadJournal() { try { return JSON.parse(localStorage.getItem(JOURNAL_KEY)) || []; } catch { return []; } }
 function saveJournal(entries) { try { localStorage.setItem(JOURNAL_KEY, JSON.stringify(entries)); } catch {} }
 
+function getOpenTrade(symKey) {
+  return loadJournal().find(e => e.symbol === symKey && e.status === "open") || null;
+}
+
 function journalRecordSignal(symKey, signal) {
   if (signal?.status !== "signal") return;
+  if (getOpenTrade(symKey)) return; // one open trade per symbol at a time -- wait for SL/TP before logging the next
   const entries = loadJournal();
   const id = `${symKey}:${signal.direction}:${signal.candleTime}`;
   if (entries.some(e => e.id === id)) return;
@@ -1432,7 +1431,7 @@ function renderPositionSizing() {
 /* ---------------- data health ---------------- */
 
 let lastSuccessfulScanAt = null;
-const STALE_THRESHOLD_MS = 10 * 60 * 1000;
+const STALE_THRESHOLD_MS = 6 * 60 * 1000; // 3x the 2-minute scan cadence
 
 function renderDataHealth() {
   const el = document.getElementById("dataHealth");
@@ -1589,8 +1588,8 @@ document.getElementById("backtestBtn").addEventListener("click", async () => {
     const sym = symbolByKey(backtestSymbol);
     const apiKey = getTwelveDataKey();
     const outputsize = (apiKey && sym.kind === "metal") ? 800 : 150;
-    const [c15, c1h, c4h] = await Promise.all([getCandlesFor(sym, "15m", outputsize), getCandlesFor(sym, "1h", outputsize), getCandlesFor(sym, "4h", outputsize)]);
-    const result = runBacktest(c15, c1h, c4h);
+    const [c15, c1h] = await Promise.all([getCandlesFor(sym, "15m", outputsize), getCandlesFor(sym, "1h", outputsize)]);
+    const result = runBacktest(c15, c1h);
     renderBacktest(result);
     document.getElementById("card-tools").scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (err) {
@@ -1604,7 +1603,7 @@ updateSessionBadge();
 setInterval(updateSessionBadge, 30 * 1000);
 setInterval(renderDataHealth, 30 * 1000);
 scanAll().then(setUpdatedLabel);
-setInterval(async () => { await scanAll(); setUpdatedLabel(); }, 5 * 60 * 1000);
+setInterval(async () => { await scanAll(); setUpdatedLabel(); }, 2 * 60 * 1000);
 setInterval(liveTick, 15 * 1000);
 </script>
 </body>
