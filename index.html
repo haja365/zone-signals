@@ -173,11 +173,16 @@
   All times shown are in <b>UAE time</b> (Asia/Dubai), regardless of your
   device's own timezone setting.<br/><br/>
   Each chart plots Entry/SL/TP1/TP2/TP3 directly on the 15m candles (dashed
-  while unconfirmed, solid once a signal fires). Signals require four
-  aligned timeframes — Daily sets the bias, 4H and 1H must agree, 15M
-  supplies the trigger candle — so expect fewer but better-supported
-  signals. Each read also checks for Smart Money Concepts (Fair Value Gaps,
-  Order Blocks, Break of Structure / Change of Character) and rolls
+  while unconfirmed, solid once a signal fires). Daily sets the bias, then
+  only <b>one</b> of 4H/1H needs to agree (not both), and the 15m trigger
+  accepts either a candle pattern or a Smart Money structure break — looser
+  than a strict all-four-agree chain, so signals fire more often, while
+  still requiring real multi-timeframe + price-action agreement. TP1/TP2/TP3
+  target a configurable pip range (Size tab — default 100/200 pips, i.e.
+  $1.00-$2.00 on gold/silver at the standard $0.01-per-pip convention) rather
+  than a pure risk-multiple, with a rough reachability read based on recent
+  15m volatility. Each read also checks for Smart Money Concepts (Fair Value
+  Gaps, Order Blocks, Break of Structure / Change of Character) and rolls
   everything into a weighted 0-100 <b>confidence score</b> with a visible
   breakdown of what's contributing to it, including an automatic penalty
   when a major news release is imminent. The Trend / Size / Journal / News /
@@ -524,8 +529,17 @@ function biasAt(ind, i) {
   if (e20 < e50 && r < 55) return "bearish";
   return "neutral";
 }
+// Same $0.01-per-pip convention used by Exness and virtually all CFD
+// brokers for both XAU/USD and XAG/USD.
+const PIP_SIZE = 0.01;
+function getPipTargets() {
+  const min = parseFloat(localStorage.getItem("zs_min_pips")) || 100;
+  const max = parseFloat(localStorage.getItem("zs_max_pips")) || 200;
+  return { minPips: min, maxPips: max };
+}
+
 function zoneAt(candles, ind, i, direction) {
-  const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 1.5;
+  const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 2.5;
   const levels = [];
   if (e50 != null) levels.push(e50);
   const relevant = (direction === "buy" ? ind.swingLows : ind.swingHighs).filter(s => s.index <= i - 2).slice(-8);
@@ -533,6 +547,12 @@ function zoneAt(candles, ind, i, direction) {
   const nearLevel = levels.find(lvl => Math.abs(price - lvl) <= proximity);
   return { inZone: !!nearLevel, level: nearLevel, atrNow };
 }
+
+// SL still comes off ATR/structure, same as before. TP1/TP2/TP3 now target a
+// configurable pip range (default 100-200 pips = $1-$2 on gold/silver at
+// the standard $0.01-per-pip convention) instead of pure risk-multiples --
+// R:R is reported based on wherever that lands relative to the stop, rather
+// than the stop being sized to hit a fixed R:R.
 function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoIndex) {
   const atrNow = atrRaw || entry * 0.003;
   const relevantSwings = (direction === "buy" ? swingLows : swingHighs).filter(s => uptoIndex == null || s.index <= uptoIndex - 2);
@@ -541,10 +561,21 @@ function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoInde
   if (direction === "buy") { const s = nearestStructure != null ? nearestStructure - atrNow * 0.3 : entry - atrNow * 1.5; stopLoss = Math.min(s, entry - atrNow * 1.2); }
   else { const s = nearestStructure != null ? nearestStructure + atrNow * 0.3 : entry + atrNow * 1.5; stopLoss = Math.max(s, entry + atrNow * 1.2); }
   const risk = Math.abs(entry - stopLoss);
-  const tp1 = direction === "buy" ? entry + risk * 1.5 : entry - risk * 1.5;
-  const tp2 = direction === "buy" ? entry + risk * 3 : entry - risk * 3;
-  const tp3 = direction === "buy" ? entry + risk * 4.5 : entry - risk * 4.5;
-  return { stopLoss, tp1, tp2, tp3, risk };
+
+  const { minPips, maxPips } = getPipTargets();
+  const minDist = minPips * PIP_SIZE, midDist = ((minPips + maxPips) / 2) * PIP_SIZE, maxDist = maxPips * PIP_SIZE;
+  const tp1 = direction === "buy" ? entry + minDist : entry - minDist;
+  const tp2 = direction === "buy" ? entry + midDist : entry - midDist;
+  const tp3 = direction === "buy" ? entry + maxDist : entry - maxDist;
+
+  // Rough reachability read: how many 15m ATR-units the near target
+  // represents. Cumulative random-walk displacement scales roughly with
+  // sqrt(bars), so bars-needed ~ (distance/atr)^2 -- a heuristic, not a promise.
+  const atrUnits = atrNow > 0 ? minDist / atrNow : null;
+  const estBars15m = atrUnits != null ? Math.round(atrUnits * atrUnits) : null;
+  const feasibility = estBars15m == null ? null : estBars15m <= 8 ? "typical" : estBars15m <= 30 ? "stretch" : "ambitious";
+
+  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: risk > 0 ? minDist / risk : null, rrTp2: risk > 0 ? midDist / risk : null, rrTp3: risk > 0 ? maxDist / risk : null, minPips, maxPips, feasibility, estBars15m };
 }
 function biasOnly(candles) {
   if (!candles || candles.length < 10) return "neutral";
@@ -587,27 +618,43 @@ function smcSupports(smc, direction) {
   return false;
 }
 
-// Four-tier confluence: Daily sets the bias, 4H must agree, 1H must agree
-// and be sitting in a zone, 15M supplies the entry trigger candle. Stricter
-// than the old 3-tier chain -- fewer signals, each one better supported.
+// Loosened four-tier confluence: Daily still sets the bias, but now only
+// ONE of 4H/1H needs to agree (not both), and the 15m trigger accepts a
+// candle pattern OR a Smart Money structure break in the same direction --
+// more entries than the original strict version, still requiring genuine
+// multi-timeframe + price-action agreement, not just one factor alone.
 function buildSignal(tfReads) {
   const daily = tfReads["daily"], h4 = tfReads["4h"], h1 = tfReads["1h"], m15 = tfReads["15m"];
   if (!daily.bias || daily.bias === "neutral") return { status: "watching", reason: "Daily has no clear trend right now — no bias to trade either direction" };
   const direction = daily.bias === "bullish" ? "buy" : "sell";
-  const h4Aligned = h4.bias === daily.bias;
-  const h1Aligned = h4Aligned && h1.bias === daily.bias && h1.zone && h1.zone.direction === direction;
-  const m15Confirms = h1Aligned && m15.pattern && m15.pattern.bias === direction;
+  const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
+
+  const h4Agrees = h4.bias === daily.bias;
+  const h1Agrees = h1.bias === daily.bias;
+  const higherTFAligned = h4Agrees || h1Agrees;
+
+  const h1InZone = h1Agrees && h1.zone && h1.zone.direction === direction;
+  const h4InZone = h4Agrees && h4.zone && h4.zone.direction === direction;
+  const inZone = h1InZone || h4InZone;
+  const zoneLevel = h1InZone ? h1.zone.level : h4InZone ? h4.zone.level : null;
+
+  const patternConfirms = m15.pattern && m15.pattern.bias === direction;
+  const structureConfirms = m15.smc?.structure && m15.smc.structure.direction === wantSmcDir;
+  const m15Confirms = higherTFAligned && inZone && (patternConfirms || structureConfirms);
+
   const entryNow = m15.lastClose;
   const preview = (entryNow != null) ? computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs) : null;
 
-  if (!h4Aligned || !h1Aligned || !m15Confirms) {
-    const reason = !h4Aligned ? "4H not yet aligned with Daily"
-      : !h1Aligned ? "1H not yet aligned / price not in a zone"
-      : "1H is aligned — waiting for a 15m candle to confirm entry";
+  if (!higherTFAligned || !inZone || !m15Confirms) {
+    const reason = !higherTFAligned ? "Neither 4H nor 1H aligned with Daily yet"
+      : !inZone ? "Aligned with Daily, but price isn't at a zone yet"
+      : "Aligned and in a zone — waiting for a 15m candle or structure break to confirm";
     return { status: "watching", direction, preview, reason, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern?.type || "none" } };
   }
+
   const confirmed = computeLevels(direction, entryNow, m15.atrNow, m15.swingLows, m15.swingHighs);
-  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: 1.5, riskRewardTp2: 3, riskRewardTp3: 4.5, pattern: m15.pattern.type, zoneLevel: h1.zone.level, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": m15.pattern.type }, candleTime: m15.candleTime, smc: m15.smc };
+  const triggerLabel = patternConfirms ? m15.pattern.type : `${m15.smc.structure.kind.toLowerCase()}_${m15.smc.structure.direction}`;
+  return { status: "signal", direction, entry: entryNow, ...confirmed, riskRewardTp1: confirmed.rrTp1, riskRewardTp2: confirmed.rrTp2, riskRewardTp3: confirmed.rrTp3, pattern: triggerLabel, zoneLevel, tf: { daily: daily.bias, "4h": h4.bias, "1h": h1.bias, "15m": triggerLabel }, candleTime: m15.candleTime, smc: m15.smc };
 }
 
 // Weighted 0-100 confidence score. Timeframe alignment carries the most
@@ -688,14 +735,19 @@ function runBacktest(candles15, candles1h, candles4h) {
     const dailyBias = biasAt(indDaily, pd);
     if (dailyBias === "neutral") continue;
     const direction = dailyBias === "bullish" ? "buy" : "sell";
+    const wantSmcDir = direction === "buy" ? "bullish" : "bearish";
     const h4Bias = biasAt(ind4h, p4);
-    if (h4Bias !== dailyBias) continue;
     const h1Bias = biasAt(ind1h, p1);
-    if (h1Bias !== dailyBias) continue;
-    const h1Zone = zoneAt(candles1h, ind1h, p1, direction);
-    if (!h1Zone.inZone) continue;
+    const h4Agrees = h4Bias === dailyBias, h1Agrees = h1Bias === dailyBias;
+    if (!h4Agrees && !h1Agrees) continue;
+    const h1Zone = h1Agrees ? zoneAt(candles1h, ind1h, p1, direction) : { inZone: false };
+    const h4Zone = h4Agrees ? zoneAt(candles4h, ind4h, p4, direction) : { inZone: false };
+    if (!h1Zone.inZone && !h4Zone.inZone) continue;
     const pattern = detectPattern(candles15, i);
-    if (!pattern || pattern.bias !== direction) continue;
+    const patternConfirms = pattern && pattern.bias === direction;
+    const smc = findRecentSMC(candles15, ind15, i, dailyBias);
+    const structureConfirms = smc.structure && smc.structure.direction === wantSmcDir;
+    if (!patternConfirms && !structureConfirms) continue;
     const entry = candles15[i].close;
     const { stopLoss, tp1 } = computeLevels(direction, entry, ind15.atr14[i], ind15.swingLows, ind15.swingHighs, i);
     let outcome = "timeout";
@@ -882,6 +934,20 @@ function renderShell() {
           <div class="k">Risk per trade (%)</div>
           <input id="riskPercent" type="number" inputmode="decimal" step="0.1" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
         </div>
+        <div class="stat">
+          <div class="k">Min target (pips)</div>
+          <input id="minPips" type="number" inputmode="decimal" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
+        </div>
+        <div class="stat">
+          <div class="k">Max target (pips)</div>
+          <input id="maxPips" type="number" inputmode="decimal" style="width:100%;background:transparent;border:none;color:var(--ink);font-family:var(--mono);font-size:14.5px;padding:0;margin-top:3px;" />
+        </div>
+      </div>
+      <div class="reason" style="margin-top:8px;">
+        1 pip = $0.01 on gold/silver (Exness/standard CFD convention) — so
+        100-200 pips = a $1.00-$2.00 move. TP1 targets the min, TP3 the max,
+        TP2 the midpoint. Changing these updates every new signal going
+        forward, not ones already fired.
       </div>
       <div id="sizingResult" class="reason" style="margin-top:10px;">Waiting for a signal or preview to size against…</div>
     </div>
@@ -936,6 +1002,12 @@ function renderShell() {
   riskInput.value = localStorage.getItem("zs_risk_percent") || "1";
   acctInput.addEventListener("input", () => { localStorage.setItem("zs_acct_balance", acctInput.value); renderPositionSizing(); });
   riskInput.addEventListener("input", () => { localStorage.setItem("zs_risk_percent", riskInput.value); renderPositionSizing(); });
+
+  const minPipsInput = document.getElementById("minPips"), maxPipsInput = document.getElementById("maxPips");
+  minPipsInput.value = localStorage.getItem("zs_min_pips") || "100";
+  maxPipsInput.value = localStorage.getItem("zs_max_pips") || "200";
+  minPipsInput.addEventListener("input", () => { localStorage.setItem("zs_min_pips", minPipsInput.value); });
+  maxPipsInput.addEventListener("input", () => { localStorage.setItem("zs_max_pips", maxPipsInput.value); });
 
   document.getElementById("clearJournalBtn").addEventListener("click", () => {
     if (confirm("Clear all logged trades? This can't be undone.")) { saveJournal([]); renderJournal(); }
@@ -1134,17 +1206,23 @@ function renderCard(sym, payload) {
   }
 
   let html = "";
+  const rr = n => n == null ? "—" : n.toFixed(1);
+  const feasibilityNote = f => f === "typical" ? `<span style="color:var(--buy);">reachable within a normal candle or two</span>`
+    : f === "stretch" ? `<span style="color:var(--gold);">a bit of a stretch given current volatility</span>`
+    : f === "ambitious" ? `<span style="color:var(--sell);">ambitious right now — current volatility is low relative to this target</span>`
+    : "";
   if (signal?.status === "signal") {
     const smcText = smcSummary(signal.smc);
     html = `<div class="grid">
       <div class="stat"><div class="k">Entry</div><div class="v">${fmt(signal.entry, sym.decimals)}</div></div>
       <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(signal.stopLoss, sym.decimals)}</div></div>
-      <div class="stat buy"><div class="k">TP1 (1:${signal.riskRewardTp1})</div><div class="v">${fmt(signal.tp1, sym.decimals)}</div></div>
-      <div class="stat buy"><div class="k">TP2 (1:${signal.riskRewardTp2})</div><div class="v">${fmt(signal.tp2, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP1 · ${signal.minPips}p (1:${rr(signal.riskRewardTp1)})</div><div class="v">${fmt(signal.tp1, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP2 · mid (1:${rr(signal.riskRewardTp2)})</div><div class="v">${fmt(signal.tp2, sym.decimals)}</div></div>
+      <div class="stat buy"><div class="k">TP3 · ${signal.maxPips}p (1:${rr(signal.riskRewardTp3)})</div><div class="v">${fmt(signal.tp3, sym.decimals)}</div></div>
       <div class="stat"><div class="k">15m trigger</div><div class="v" style="font-size:11px;">${signal.pattern.replace(/_/g," ")}</div></div>
-      <div class="stat"><div class="k">Zone level</div><div class="v">${fmt(signal.zoneLevel, sym.decimals)}</div></div>
       ${smcText ? `<div class="stat"><div class="k">Smart Money context</div><div class="v" style="font-size:11px;">${smcText}</div></div>` : ""}
-    </div>`;
+    </div>
+    ${feasibilityNote(signal.feasibility) ? `<div class="reason">TP1 looks ${feasibilityNote(signal.feasibility)} based on recent 15m volatility.</div>` : ""}`;
     html += renderConfidenceHTML(confidence);
   } else if (signal?.preview) {
     const p = signal.preview, dirLabel = signal.direction === "buy" ? "Potential buy setup" : "Potential sell setup";
@@ -1153,8 +1231,8 @@ function renderCard(sym, payload) {
       <div class="grid">
         <div class="stat"><div class="k">If triggered ~</div><div class="v">${fmt(lastPrice, sym.decimals)}</div></div>
         <div class="stat sell"><div class="k">Stop loss</div><div class="v">${fmt(p.stopLoss, sym.decimals)}</div></div>
-        <div class="stat buy"><div class="k">TP1 (1:1.5)</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
-        <div class="stat buy"><div class="k">TP2 (1:3)</div><div class="v">${fmt(p.tp2, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP1 · ${p.minPips}p</div><div class="v">${fmt(p.tp1, sym.decimals)}</div></div>
+        <div class="stat buy"><div class="k">TP3 · ${p.maxPips}p</div><div class="v">${fmt(p.tp3, sym.decimals)}</div></div>
       </div>`;
     html += renderConfidenceHTML(confidence);
   } else {
