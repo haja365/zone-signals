@@ -130,13 +130,17 @@
 </header>
 
 <div id="apiKeyBox" class="setup-box" style="display:none;">
+  <div id="keySourceNote" style="font-family:var(--mono); font-size:10.5px; color:var(--gold); margin-bottom:8px;"></div>
   <b>Recommended: reliable price data for Gold &amp; Silver</b><br/>
   Without a key, metals fall back to a free public relay that's proven
   unreliable in practice. A free
   <a class="ghost-link" href="https://twelvedata.com/pricing" target="_blank" rel="noopener">Twelve Data</a>
   account (no card, 800 requests/day) fetches directly with no proxy
   involved — sign up, copy your API key, paste it below.
-  <input id="apiKeyInput" placeholder="Twelve Data API key" autocapitalize="off" autocorrect="off" />
+  <div style="display:flex; gap:6px; align-items:center;">
+    <input id="apiKeyInput" type="password" placeholder="Twelve Data API key" autocapitalize="off" autocorrect="off" style="flex:1; margin:8px 0;" />
+    <button type="button" id="toggleApiKey" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border); padding:9px 12px; border-radius:8px; font-size:11px; white-space:nowrap;">Show</button>
+  </div>
   <div style="display:flex; gap:8px;">
     <button id="saveApiKey">Save</button>
     <button id="clearApiKey" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
@@ -146,7 +150,10 @@
     Used only if Twelve Data is missing or fails. Free
     <a class="ghost-link" href="https://finnhub.io/register" target="_blank" rel="noopener">Finnhub</a>
     account (no card, 60 calls/min) — direct API, not a proxy.
-    <input id="finnhubInput" placeholder="Finnhub API key" autocapitalize="off" autocorrect="off" />
+    <div style="display:flex; gap:6px; align-items:center;">
+      <input id="finnhubInput" type="password" placeholder="Finnhub API key" autocapitalize="off" autocorrect="off" style="flex:1; margin:8px 0;" />
+      <button type="button" id="toggleFinnhub" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border); padding:9px 12px; border-radius:8px; font-size:11px; white-space:nowrap;">Show</button>
+    </div>
     <div style="display:flex; gap:8px;">
       <button id="saveFinnhub">Save</button>
       <button id="clearFinnhub" style="background:transparent; color:var(--ink-dim); border:1px solid var(--panel-border);">Clear</button>
@@ -1435,11 +1442,34 @@ function updateSessionBadge() {
 renderShell();
 
 document.getElementById("refreshBtn").addEventListener("click", async () => { document.getElementById("updated").textContent = "scanning…"; await scanAll(); setUpdatedLabel(); });
+document.getElementById("toggleApiKey").addEventListener("click", () => {
+  const input = document.getElementById("apiKeyInput");
+  const btn = document.getElementById("toggleApiKey");
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  btn.textContent = showing ? "Show" : "Hide";
+});
+document.getElementById("toggleFinnhub").addEventListener("click", () => {
+  const input = document.getElementById("finnhubInput");
+  const btn = document.getElementById("toggleFinnhub");
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  btn.textContent = showing ? "Show" : "Hide";
+});
 document.getElementById("apiKeyBtn").addEventListener("click", () => {
   const box = document.getElementById("apiKeyBox");
   box.style.display = box.style.display === "none" ? "block" : "none";
   document.getElementById("apiKeyInput").value = getTwelveDataKey();
   document.getElementById("finnhubInput").value = getFinnhubKey();
+  document.getElementById("apiKeyInput").type = "password";
+  document.getElementById("finnhubInput").type = "password";
+  document.getElementById("toggleApiKey").textContent = "Show";
+  document.getElementById("toggleFinnhub").textContent = "Show";
+  const note = document.getElementById("keySourceNote");
+  if (note) {
+    const tdSet = !!localStorage.getItem("zs_td_key"), fhSet = !!localStorage.getItem("zs_fh_key");
+    note.textContent = `Twelve Data: ${tdSet ? "key saved on this device" : "not set"} · Finnhub: ${fhSet ? "key saved on this device" : "not set"}`;
+  }
 });
 document.getElementById("saveApiKey").addEventListener("click", () => {
   const val = document.getElementById("apiKeyInput").value.trim();
