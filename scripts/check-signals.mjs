@@ -219,13 +219,6 @@ function biasAt(ind, i) {
   if (e20 < e50 && r < 55) return "bearish";
   return "neutral";
 }
-// Same $0.01-per-pip convention as Exness and virtually all CFD brokers,
-// for both XAU/USD and XAG/USD. MIN_PIPS/MAX_PIPS env vars mirror the
-// app's Size-tab settings (localStorage has no equivalent here).
-const PIP_SIZE = 0.10;
-const MIN_PIPS = parseFloat(process.env.MIN_PIPS) || 100;
-const MAX_PIPS = parseFloat(process.env.MAX_PIPS) || 200;
-
 function zoneAt(candles, ind, i, direction) {
   const price = candles[i].close, e50 = ind.ema50[i], atrNow = ind.atr14[i] || price * 0.005, proximity = atrNow * 2.5;
   const levels = [];
@@ -236,8 +229,8 @@ function zoneAt(candles, ind, i, direction) {
   return { inZone: !!nearLevel, level: nearLevel, atrNow };
 }
 
-// SL still comes off ATR/structure. TP1/TP2/TP3 target the configured pip
-// range instead of pure risk-multiples.
+// Market-standard ATR-based risk-multiples: SL off ATR/structure, TP1/TP2/TP3
+// at 1.5R/3R/4.5R off that same stop distance. Matches the app exactly.
 function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoIndex) {
   const atrNow = atrRaw || entry * 0.003;
   const relevantSwings = (direction === "buy" ? swingLows : swingHighs).filter(s => uptoIndex == null || s.index <= uptoIndex - 2);
@@ -247,16 +240,11 @@ function computeLevels(direction, entry, atrRaw, swingLows, swingHighs, uptoInde
   else { const s = nearestStructure != null ? nearestStructure + atrNow * 0.3 : entry + atrNow * 1.5; stopLoss = Math.max(s, entry + atrNow * 1.2); }
   const risk = Math.abs(entry - stopLoss);
 
-  const minDist = MIN_PIPS * PIP_SIZE, midDist = ((MIN_PIPS + MAX_PIPS) / 2) * PIP_SIZE, maxDist = MAX_PIPS * PIP_SIZE;
-  const tp1 = direction === "buy" ? entry + minDist : entry - minDist;
-  const tp2 = direction === "buy" ? entry + midDist : entry - midDist;
-  const tp3 = direction === "buy" ? entry + maxDist : entry - maxDist;
+  const tp1 = direction === "buy" ? entry + risk * 1.5 : entry - risk * 1.5;
+  const tp2 = direction === "buy" ? entry + risk * 3 : entry - risk * 3;
+  const tp3 = direction === "buy" ? entry + risk * 4.5 : entry - risk * 4.5;
 
-  const atrUnits = atrNow > 0 ? minDist / atrNow : null;
-  const estBars15m = atrUnits != null ? Math.round(atrUnits * atrUnits) : null;
-  const feasibility = estBars15m == null ? null : estBars15m <= 8 ? "typical" : estBars15m <= 30 ? "stretch" : "ambitious";
-
-  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: risk > 0 ? minDist / risk : null, rrTp2: risk > 0 ? midDist / risk : null, rrTp3: risk > 0 ? maxDist / risk : null, feasibility, estBars15m };
+  return { stopLoss, tp1, tp2, tp3, risk, rrTp1: 1.5, rrTp2: 3, rrTp3: 4.5 };
 }
 function biasOnly(candles) {
   if (!candles || candles.length < 10) return "neutral";
@@ -437,21 +425,16 @@ function formatMessage(sym, signal, confidence) {
         .filter(Boolean).map(s => s.replace(/_/g, " ")).join(", ")
     : null;
   const rr = n => n == null ? "—" : n.toFixed(1);
-  const feasText = signal.feasibility === "typical" ? "reachable within a normal candle or two"
-    : signal.feasibility === "stretch" ? "a bit of a stretch given current volatility"
-    : signal.feasibility === "ambitious" ? "ambitious right now -- volatility is low relative to this target"
-    : null;
   const lines = [
     `${emoji} <b>${signal.direction.toUpperCase()} ${sym.label}</b>`,
     ``,
     `Entry: ${fmt(signal.entry, sym.decimals)}`,
     `SL: ${fmt(signal.stopLoss, sym.decimals)}`,
-    `TP1 (${MIN_PIPS}p): ${fmt(signal.tp1, sym.decimals)} (1:${rr(signal.riskRewardTp1)})`,
-    `TP2 (mid): ${fmt(signal.tp2, sym.decimals)} (1:${rr(signal.riskRewardTp2)})`,
-    `TP3 (${MAX_PIPS}p): ${fmt(signal.tp3, sym.decimals)} (1:${rr(signal.riskRewardTp3)})`,
+    `TP1: ${fmt(signal.tp1, sym.decimals)} (1:${rr(signal.riskRewardTp1)})`,
+    `TP2: ${fmt(signal.tp2, sym.decimals)} (1:${rr(signal.riskRewardTp2)})`,
+    `TP3: ${fmt(signal.tp3, sym.decimals)} (1:${rr(signal.riskRewardTp3)})`,
     `15m trigger: ${signal.pattern.replace(/_/g, " ")}`,
   ];
-  if (feasText) lines.push(`TP1 feasibility: ${feasText}`);
   if (smcText) lines.push(`Smart Money: ${smcText}`);
   if (confidence) lines.push(``, `Confidence: ${confidence.score}%`);
   return lines.join("\n");
